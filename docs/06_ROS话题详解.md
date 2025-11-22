@@ -237,10 +237,15 @@ graph TB
         BT -->|/cmd_vel| SERIAL
     end
 
-    style SERIAL fill:#ffcc99
-    style DET fill:#99ff99
-    style PL fill:#99ccff
-    style BT fill:#ff9999
+    classDef hardwareClass fill:#FFE5CC,stroke:#333,stroke-width:2px
+    classDef perceptionClass fill:#CCE5FF,stroke:#333,stroke-width:2px
+    classDef navClass fill:#E5CCFF,stroke:#333,stroke-width:2px
+    classDef decisionClass fill:#FFCCCC,stroke:#333,stroke-width:2px
+
+    class SERIAL,CAM hardwareClass
+    class DET,TRACK,PROJ perceptionClass
+    class LIDAR,PL,TA,NAV2 navClass
+    class BB,BT decisionClass
 ```
 
 ### 5.2 关键话题列表
