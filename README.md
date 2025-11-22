@@ -1,186 +1,142 @@
-# pb2025_sentry_ws
+# PB2025 哨兵机器人开发手册
 
-![PolarBear Logo](https://raw.githubusercontent.com/SMBU-PolarBear-Robotics-Team/.github/main/.docs/image/polarbear_logo_text.png)
+欢迎使用深圳北理莫斯科大学北极熊战队 RoboMaster 2025 哨兵机器人开发手册！
 
-## 1. 项目介绍
+本手册提供了完整的系统架构、节点详解、话题说明、参数配置和调试指南。
 
-深圳北理莫斯科大学北极熊战队 哨兵机器人 ROS 工作空间，包含串口通信、视觉、导航、决策、仿真模块。
+## 📚 文档导航
 
-## 2. Quick Start
+### 基础架构
+- **[01. 系统架构总览](./docs/01_系统架构.md)** - 整体架构、数据流、模块关系
+  - 五层架构设计
+  - 系统数据流向图
+  - 关键技术栈
 
-### 2.1 Setup Environment
+### 功能层详解
+- **[02. 硬件接口层](./docs/02_硬件接口层.md)** - 串口通信、相机驱动
+  - 串口通信节点 (standard_robot_pp_ros2)
+  - 工业相机驱动节点 (hik_camera_ros2_driver)
 
-- Ubuntu 22.04
-- ROS: [Humble](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html)
-- Ignition: [Fortress](https://gazebosim.org/docs/fortress/install_ubuntu/)
-- Install [OpenVINO 2023.3](https://docs.openvino.ai/2025/get-started/install-openvino.html?PACKAGE=OPENVINO_BASE&VERSION=v_2023_3_0&OP_SYSTEM=LINUX&DISTRIBUTION=APT)
-- Install [small_icp](https://github.com/koide3/small_gicp):
+- **[03. 感知层](./docs/03_感知层.md)** - 视觉检测与追踪
+  - 装甲板检测节点 (OpenCV/OpenVINO)
+  - 目标追踪节点 (armor_tracker)
+  - 弹道计算节点 (projectile_motion)
 
-    ```bash
-    sudo apt install -y libeigen3-dev libomp-dev
+- **[04. 导航层](./docs/04_导航层.md)** - 定位、建图与路径规划
+  - LiDAR驱动与里程计 (point_lio)
+  - 全局重定位 (small_gicp_relocalization)
+  - 地形分析 (terrain_analysis)
+  - Nav2导航栈配置
 
-    git clone https://github.com/koide3/small_gicp.git
-    cd small_gicp
-    mkdir build && cd build
-    cmake .. -DCMAKE_BUILD_TYPE=Release && make -j
-    sudo make install
-    ```
+- **[05. 决策层](./docs/05_决策层.md)** - 行为树决策框架
+  - 行为树服务器
+  - 条件节点详解
+  - 动作节点详解
 
-### 2.2 Create Workspace
+### 开发指南
+- **[06. ROS话题详解](./docs/06_ROS话题详解.md)** - 所有话题和消息类型
+  - 自定义消息接口
+  - 话题订阅/发布关系
+  - 裁判系统消息详解
 
+- **[07. 参数配置指南](./docs/07_参数配置.md)** - 参数说明与调优
+  - 中心配置文件结构
+  - 各模块参数详解
+  - 调试参数建议
+
+- **[08. 运行与调试指南](./docs/08_运行与调试.md)** - 启动、测试、问题排查
+  - 完整系统启动
+  - 单模块调试
+  - Rosbag工作流
+  - 常见问题解决
+
+## 🚀 快速开始
+
+### 构建项目
 ```bash
-sudo apt install git-lfs
-sudo pip install vcstool2
-```
-
-```bash
-git clone https://github.com/SMBU-PolarBear-Robotics-Team/pb2025_sentry_ws.git
-```
-
-```bash
-cd pb2025_sentry_ws
-```
-
-```bash
-vcs import --recursive . < dependencies.repos
-```
-
-> [!NOTE]
-> `dependencies.repos` 文件已包含所有模块所依赖的仓库地址，无需手动查阅子模块的 README 手动克隆依赖。
-
-> [!TIP]
-> 使用命令 `vcs pull ./src` 可更新所有子模块。
-
-### 2.3 Build
-
-```bash
+# 安装依赖
 rosdep install -r --from-paths src --ignore-src --rosdistro $ROS_DISTRO -y
-```
 
-```bash
+# 构建工作空间
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --parallel-workers 10
 ```
 
-> [!NOTE]
-> 推荐使用 --symlink-install 选项来构建你的工作空间，因为 pb2025_sentry_ws 广泛使用了 launch.py 文件和 yaml 文件。这个构建参数会为那些非编译的源文件使用符号链接，这意味着当你调整参数文件时，不需要反复重建，只需要重新启动即可。
-
-### 2.4 Running
-
-将会运行串口通信、视觉、导航、决策模块，参数均读取自配置文件 [node_params](./src/pb2025_sentry_bringup/params/node_params.yaml)。
-
+### 启动系统
 ```bash
+# 启动完整系统
 ros2 launch pb2025_sentry_bringup bringup.launch.py \
-world:=<YOUR_PARAMS_FILE> \
-use_rviz:=True
+  world:=<YOUR_WORLD_NAME> \
+  use_rviz:=True \
+  params_file:=$(pwd)/src/pb2025_sentry_bringup/params/node_params.yaml
 ```
 
-## 3. 常用调试启动命令
+详细说明请参阅 **[运行与调试指南](./docs/08_运行与调试.md)**。
 
-> [!NOTE]
-> 请自行替换 `<YOUR_WORLD_NAME>` 为你的 map, pcd 的文件名；替换 `<YOUR_PARAMS_FILE>` 为你的配置文件的**绝对路径**，如 [node_params](./src/pb2025_sentry_bringup/params/node_params.yaml)。
+## 📊 系统概览
 
-### 3.1 子模块
-
-Camera
-
-```bash
-ros2 launch hik_camera_ros2_driver hik_camera_launch.py params_file:=<YOUR_PARAMS_FILE>
+### 五层架构
+```
+┌─────────────────────────────────────────┐
+│         决策层 (Decision Layer)         │
+│    BehaviorTree.CPP 行为树框架          │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│         导航层 (Navigation Layer)       │
+│  Point-LIO + Nav2 + 地形分析            │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│         感知层 (Perception Layer)       │
+│  装甲板检测 + EKF追踪 + 弹道解算        │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│      硬件接口层 (Hardware Layer)        │
+│    串口通信 + 工业相机驱动              │
+└─────────────────────────────────────────┘
 ```
 
-Serial
+### 关键数据流
 
-```bash
-ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py use_rviz:=True params_file:=<YOUR_PARAMS_FILE>
+**感知流水线**：
+```
+相机图像 → 装甲板检测 → 目标追踪 → 弹道计算 → 云台指令 → 嵌入式系统
 ```
 
-Vision
-
-```bash
-ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
-use_composition:=True \
-use_rviz:=True \
-params_file:=<YOUR_PARAMS_FILE>
+**导航流水线**：
+```
+LiDAR+IMU → 点云配准 → 里程计 → 地形分析 → 代价地图 → 路径规划 → 底盘指令
 ```
 
-Navigation
-
-```bash
-ros2 launch pb2025_nav_bringup rm_navigation_reality_launch.py \
-world:=<YOUR_WORLD_NAME>  \
-slam:=False
+**决策流水线**：
+```
+裁判系统 + 视觉 + 导航 → 全局黑板 → 行为树 → 导航目标/速度指令
 ```
 
-Behavior Tree
+## 🛠️ 开发资源
 
-```bash
-ros2 launch pb2025_sentry_behavior pb2025_sentry_behavior_launch.py params_file:=<YOUR_PARAMS_FILE>
-```
+### 外部依赖
+- **ROS2 Humble** - 机器人操作系统
+- **OpenVINO 2023.3** - 神经网络推理引擎
+- **small_gicp** - 点云配准库
+- **Ignition Fortress** - Gazebo仿真环境
+- **BehaviorTree.CPP v4** - 行为树框架
 
-### 3.2 Tools
+### 相关仓库
+- [SMBU PolarBear Robotics Team GitHub](https://github.com/SMBU-PolarBear-Robotics-Team)
+- [dependencies.repos](./dependencies.repos) - 子模块依赖列表
 
-Teleop gimbal
+## 📝 文档版本
 
-```bash
-ros2 run teleop_gimbal_keyboard teleop_gimbal_keyboard
-```
+- **版本**: v1.0
+- **更新日期**: 2025-11-22
+- **适用系统**: pb2025_sentry_ws
 
-Convert .pcd to .pgm
+## 🤝 贡献指南
 
-```bash
-ros2 launch pcd2pgm pcd2pgm_launch.py
-```
+本文档随代码持续更新。如发现文档问题或需要补充，请提交 Issue 或 Pull Request。
 
-Save map
+---
 
-```bash
-ros2 run nav2_map_server map_saver_cli -f <YOUR_WORLD_NAME>
-```
-
-### 3.3 Rosbags
-
-#### 3.3.1 Record
-
-> [!TIP]
-> 图像信息占用空间极大，若不需要录制图像信息，可删除 `front_industrial_camera/image` 和 `front_industrial_camera/camera_info`。建议降低 hik_camera_ros2_driver 参数中的相机帧率，以减少 rosbag 文件大小。
-
-> [!NOTE]
-> 本命令仅录制了传感器数据，没有直接录制 tf 信息，因此启动导航/视觉模块时，应设置 `use_robot_state_pub:=True`，以使用 joint_state 数据生成并发布整车 TF。
-
-方法一：根据裁判系统数据自动触发录包
-
-设置 [node_params.yaml](./src/pb2025_sentry_bringup/params/node_params.yaml) 中的 `standard_robot_pp_ros2.record_rosbag` 参数为 `True`，设置 `rosbag_recorder.topics` 为要录制的话题，裁判系统进入 5s 倒计时阶段时自动开启录制，进入比赛结算阶段时自动结束录制并保存。
-
-方法二：命令行手动触发录包
-
-```bash
-source install/setup.zsh
-
-ros2 bag record -o sentry_$(date +%Y%m%d_%H%M%S) \
-/serial/gimbal_joint_state \
-/livox/imu \
-/livox/lidar \
-/front_industrial_camera/image \
-/front_industrial_camera/camera_info \
---compression-mode file --compression-format zstd -d 30
-```
-
-#### 3.3.2 Play
-
-> [!NOTE]
-> 使用 `--clock` 参数，以发布 rosbag 中的时间戳到 `/clock` 话题。这意味着运行其他算法节点时，应设置 `use_sim_time:=True`。
-
-```bash
-ros2 bag play <YOUR_ROSBAG>.bag --clock
-```
-
-Example:
-
-```bash
-ros2 launch pb2025_sentry_bringup bringup.launch.py \
-world:=<YOUR_WORLD_NAME> \
-use_composition:=False \
-use_rviz:=True \
-use_sim_time:=True \
-use_hik_camera:=False \
-use_robot_state_pub:=True
-```
+**下一步**：阅读 [系统架构总览](./docs/01_系统架构.md) 了解整体设计。
