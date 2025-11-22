@@ -237,7 +237,7 @@ vcs import --recursive . < dependencies.repos
 
 ## 📚 Detailed Documentation
 
-**Complete Developer Manual**: [`README_DEV.md`](./README_DEV.md) - Main entry point
+**Complete Developer Manual**: [`README.md`](./README.md) - Main entry point
 
 Individual chapters in `docs/`:
 1. [`01_系统架构.md`](./docs/01_系统架构.md) - System architecture, data flow, tech stack
