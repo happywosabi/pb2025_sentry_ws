@@ -75,9 +75,11 @@ ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
   params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
 
 # 终端3：监控云台命令
+source ~/pb2025_sentry_ws/install/setup.bash
 ros2 topic echo /cmd_gimbal
 
 # 终端4：监控射击命令
+source ~/pb2025_sentry_ws/install/setup.bash
 ros2 topic echo /cmd_shoot
 
 # 说明：
