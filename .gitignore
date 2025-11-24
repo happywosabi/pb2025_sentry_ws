@@ -2,6 +2,9 @@ build
 devel
 install
 log
+vision_spin_20250214_103515
+MvSdkLog
+rosbagnew
 
 .catkin_workspace
 .vscode

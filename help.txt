@@ -1,0 +1,367 @@
+source ~/pb2025_sentry_ws/install/setup.bash
+
+bringup
+ros2 launch pb2025_sentry_bringup bringup.launch.py \
+world:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml \
+use_rviz:=True
+
+robot_pp
+ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py use_rviz:=True params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+camera
+ros2 launch hik_camera_ros2_driver hik_camera_launch.py params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+vision_reality
+
+ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
+use_composition:=True \
+use_rviz:=True \
+params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+Behavior Tree
+ros2 launch pb2025_sentry_behavior pb2025_sentry_behavior_launch.py params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+
+rosbag_debug (Recommended - 使用最小化输入调试视觉系统)
+# 终端1：播放rosbag（仅传感器数据，带QoS覆盖）
+ros2 bag play ./vision_spin_20250214_103515/vision_spin_20250214_103515_0.db3 \
+  --topics \
+    /red_standard_robot1/front_industrial_camera/image \
+    /red_standard_robot1/front_industrial_camera/camera_info \
+    /red_standard_robot1/joint_states \
+    /red_standard_robot1/tf \
+    /red_standard_robot1/tf_static \
+    /red_standard_robot1/robot_description \
+  --remap \
+    /red_standard_robot1/front_industrial_camera/image:=/front_industrial_camera/image \
+    /red_standard_robot1/front_industrial_camera/camera_info:=/front_industrial_camera/camera_info \
+    /red_standard_robot1/joint_states:=/joint_states \
+    /red_standard_robot1/tf:=/tf \
+    /red_standard_robot1/tf_static:=/tf_static \
+    /red_standard_robot1/robot_description:=/robot_description \
+  --qos-profile-overrides-path /home/happywosabi/pb2025_sentry_ws/qos_overrides.yaml \
+  --clock \
+  --loop
+
+# 终端2：启动视觉节点（本地实时运行最新代码）
+ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
+  use_sim_time:=True \
+  use_hik_camera:=False \
+  detector:=opencv \
+  use_rviz:=True \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml \
+  armor_tracker.target_frame:=base_footprint
+
+# 说明：
+# 1. 使用 --topics 过滤，只从bag中播放传感器原始数据
+# 2. 使用 --qos-profile-overrides-path 解决QoS不匹配问题
+# 3. 设置 armor_tracker.target_frame:=base_footprint 解决TF坐标系问题
+# 4. 所有视觉处理节点(detector/tracker/projectile)使用最新代码实时运行
+
+rosbag_legacy (旧版命令，已废弃)
+ros2 bag play ./vision_spin_20250214_103515/vision_spin_20250214_103515_0.db3 --clock
+ros2 launch pb2025_vision_bringup  rm_vision_reality_launch.py use_sim_time:=True use_robot_state_pub:=False namespace:=red_standard_robot1
+
+================================================================================
+Rosbag 手动录制指南（静止机器人 + 最小文件）
+================================================================================
+
+【准备工作】
+1. 创建录制目录：
+   mkdir -p ~/pb2025_sentry_ws/rosbags/manual_record
+   cd ~/pb2025_sentry_ws
+
+2. 确认设备连接：
+   ls -l /dev/ttyACM*          # 串口设备
+   lsusb | grep HIK            # 相机设备
+
+================================================================================
+方案A：最小包（~2.3GB/分钟）⭐ 推荐用于快速调试
+================================================================================
+
+# 终端1：启动传感器节点
+source install/setup.bash
+
+ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml &
+
+ros2 launch hik_camera_ros2_driver hik_camera_launch.py \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml &
+
+ros2 launch livox_ros_driver2 msg_MID360_launch.py &
+
+
+sleep 3  # 等待节点启动
+
+# 终端2：开始录制（仅传感器原始数据）
+source install/setup.bash
+
+ros2 bag record \
+  -o rosbags/manual_record/sentry_minimal_$(date +%Y%m%d_%H%M%S) \
+  /front_industrial_camera/image/compressed \
+  /front_industrial_camera/camera_info \
+  /livox/lidar \
+  /livox/imu \
+  /serial/gimbal_joint_state \
+  /tf \
+  /tf_static \
+  --compression-mode file \
+  --compression-format zstd \
+  --qos-profile-overrides-path qos_overrides.yaml
+
+# 说明：仅传感器数据（7个话题），文件~2.3GB/分钟
+# 录制1-3分钟后按 Ctrl+C 停止
+
+================================================================================
+方案B：标准包（~2.3GB/分钟）⭐⭐ 推荐用于完整调试
+================================================================================
+
+# 终端1：启动传感器节点（同方案A）
+source install/setup.bash
+
+ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml &
+
+ros2 launch hik_camera_ros2_driver hik_camera_launch.py \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml &
+
+ros2 launch livox_ros_driver2 msg_MID360_launch.py &
+
+sleep 3
+
+# 终端2：开始录制（传感器 + 裁判系统）
+source install/setup.bash
+
+ros2 bag record \
+  -o rosbags/manual_record/sentry_standard_$(date +%Y%m%d_%H%M%S) \
+  /front_industrial_camera/image/compressed \
+  /front_industrial_camera/camera_info \
+  /livox/lidar \
+  /livox/imu \
+  /serial/gimbal_joint_state \
+  /serial/imu \
+  /serial/robot_state_info \
+  /serial/robot_motion \
+  /referee/game_status \
+  /referee/robot_status \
+  /referee/event_data \
+  /referee/rfid_status \
+  /referee/all_robot_hp \
+  /referee/ground_robot_position \
+  /referee/buff \
+  /tf \
+  /tf_static \
+  /robot_description \
+  --compression-mode file \
+  --compression-format zstd \
+  --qos-profile-overrides-path qos_overrides.yaml
+
+# 说明：传感器+裁判系统（18个话题），文件~2.3GB/分钟
+# 可调试完整系统（视觉+导航+决策）
+# 录制1-3分钟后按 Ctrl+C 停止
+
+================================================================================
+方案C：完整包（~2.8GB/分钟）- 包含视觉/导航处理结果
+================================================================================
+
+# 终端1：启动完整系统
+source install/setup.bash
+
+ros2 launch pb2025_sentry_bringup bringup.launch.py \
+  world:=your_world_name \
+  use_rviz:=False \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+# 终端2：开始录制（所有数据，但排除控制命令）
+source install/setup.bash
+
+ros2 bag record \
+  -o rosbags/manual_record/sentry_full_$(date +%Y%m%d_%H%M%S) \
+  -a \
+  --exclude '/cmd_.*|/rosout|/parameter_events' \
+  --compression-mode file \
+  --compression-format zstd \
+  --qos-profile-overrides-path qos_overrides.yaml
+
+# 说明：包含所有传感器+处理结果，文件~2.8GB/分钟
+# 适合性能分析和算法对比
+# 录制1-3分钟后按 Ctrl+C 停止
+
+================================================================================
+录制完成后验证
+================================================================================
+
+# 查看录制信息
+ros2 bag info rosbags/manual_record/sentry_xxxxx
+
+# 检查文件大小
+du -sh rosbags/manual_record/sentry_xxxxx
+
+# 快速播放测试
+ros2 bag play rosbags/manual_record/sentry_xxxxx --clock --rate 2.0
+
+# 测试播放时启动视觉节点（验证数据可用）
+ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
+  use_sim_time:=True \
+  use_hik_camera:=False \
+  detector:=opencv \
+  use_rviz:=True \
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml \
+  armor_tracker.target_frame:=base_footprint
+
+================================================================================
+注意事项
+================================================================================
+
+1. 机器人静止说明：
+   - 方案A/B：只启动传感器节点，机器人完全静止（底盘+云台）
+   - 方案C：启动完整系统，底盘静止，云台可能移动
+
+2. 文件大小优化：
+   - 使用 image/compressed 代替原始图像（减少10倍）
+   - 使用 zstd 压缩（额外减少30%）
+   - 方案A/B: 3分钟约7GB，方案C: 3分钟约8.5GB
+
+3. QoS 匹配：
+   - qos_overrides.yaml 已配置传感器话题的 best_effort QoS
+   - 录制时自动匹配发布者的 QoS 策略
+
+4. 播放调试技巧：
+   - 使用 --clock 提供仿真时钟
+   - 使用 --rate 2.0 加速播放
+   - 设置 use_sim_time:=True 让节点使用bag时钟
+   - 设置 armor_tracker.target_frame:=base_footprint 解决TF问题
+
+5. 降频录制（如需严格30Hz图像）：
+   # 先启动降频节点
+   ros2 run topic_tools throttle messages \
+     /front_industrial_camera/image/compressed 30.0 \
+     /front_industrial_camera/image/compressed/throttled &
+
+   # 然后录制降频话题（替换原图像话题）
+
+================================================================================
+雷达点云与 IMU 可视化调试
+================================================================================
+
+【重要说明】
+本项目雷达驱动使用 CustomMsg 格式（xfer_format=4），这是为了保证 Point-LIO
+导航系统的最优性能。RViz 的 PointCloud2 插件无法直接显示 CustomMsg 格式。
+
+⚠️ 不要修改 msg_MID360_launch.py 中的 xfer_format 为 0，否则会导致 Point-LIO
+无法接收数据，整车导航系统将完全失效！
+
+================================================================================
+方案1：查看 Point-LIO 处理后的点云（推荐用于导航调试）⭐⭐
+================================================================================
+
+# 终端1：播放 rosbag
+ros2 bag play <rosbag_path> --clock --loop
+
+# 终端2：启动 Point-LIO（会输出处理后的点云）
+ros2 launch point_lio mapping.launch.py
+
+# 终端3：启动 RViz 查看
+rviz2 -d ~/pb2025_sentry_ws/src/pb2025_sentry_nav/point_lio/rviz_cfg/loam_livox.rviz \
+  --ros-args -p use_sim_time:=True
+
+# 说明：
+# - Point-LIO 订阅 /livox/lidar (CustomMsg)
+# - 输出 /cloud_registered (PointCloud2) - 经过滤波和配准的点云
+# - 输出 /Odometry - 机器人位姿
+# - Fixed Frame: body
+# - 适合调试导航、定位、建图功能
+
+================================================================================
+方案2：查看雷达原始点云（推荐用于硬件调试）⭐
+================================================================================
+
+# 终端1：播放 rosbag（或启动实际硬件）
+ros2 bag play <rosbag_path> --clock --loop
+
+# 终端2：启动转换节点（CustomMsg → PointCloud2）
+ros2 run livox_ros_driver2 custom_to_pointcloud2.py
+
+# 终端3：启动 RViz
+rviz2 --ros-args -p use_sim_time:=True
+
+# 在 RViz 中手动添加点云显示：
+# 1. 点击左下角 "Add" 按钮
+# 2. 选择 "By topic" 标签
+# 3. 找到 /livox/lidar_pointcloud2 话题
+# 4. 选择 PointCloud2 类型，点击 OK
+# 5. 在左侧面板设置：
+#    - Fixed Frame: base_footprint
+#    - Size (Pixels): 3
+#    - Color Transformer: Intensity
+# 6. 可选：添加 /livox/imu 话题（Imu 类型）查看 IMU 数据
+
+# 说明：
+# - 转换节点订阅 /livox/lidar (CustomMsg)
+# - 发布 /livox/lidar_pointcloud2 (PointCloud2)
+# - 显示雷达原始点云，未经任何处理
+# - 适合调试雷达硬件、检查数据质量
+
+================================================================================
+方案3：实时硬件调试（不使用 rosbag）
+================================================================================
+
+# 终端1：启动雷达驱动
+ros2 launch livox_ros_driver2 msg_MID360_launch.py
+
+# 终端2：启动转换节点
+ros2 run livox_ros_driver2 custom_to_pointcloud2.py
+
+# 终端3：启动 RViz
+rviz2
+
+# 然后在 RViz 中添加 /livox/lidar_pointcloud2 话题（参考方案2）
+
+================================================================================
+数据验证命令
+================================================================================
+
+# 查看雷达相关话题
+ros2 topic list | grep livox
+
+# 查看数据频率
+ros2 topic hz /livox/lidar              # 原始 CustomMsg，约 10 Hz
+ros2 topic hz /livox/lidar_pointcloud2  # 转换后 PointCloud2，约 10 Hz
+ros2 topic hz /livox/imu                # IMU 数据，约 200 Hz
+
+# 查看点云消息内容
+ros2 topic echo /livox/lidar --once
+ros2 topic echo /livox/lidar_pointcloud2 --once
+
+# 查看 IMU 数据
+ros2 topic echo /livox/imu --once
+
+# 检查 TF 坐标系
+ros2 run tf2_tools view_frames
+evince frames.pdf
+
+================================================================================
+常见问题排查
+================================================================================
+
+问题1：RViz 显示 "Fixed Frame [livox_frame] does not exist"
+解决：将 Fixed Frame 改为 base_footprint 或 base_link
+
+问题2：点云不显示
+检查：
+- 确认话题有数据：ros2 topic hz /livox/lidar_pointcloud2
+- 确认 Fixed Frame 正确
+- 调整点云 Size (Pixels) 为 3-5
+- 检查点云是否在视野范围内（调整相机视角）
+
+问题3：转换节点报错 "No module named 'livox_ros_driver2'"
+解决：重新编译并 source
+cd ~/pb2025_sentry_ws
+colcon build --symlink-install --packages-select livox_ros_driver2
+source install/setup.bash
+
+问题4：Point-LIO 无法接收数据
+检查：确认 msg_MID360_launch.py 中 xfer_format = 4（不是 0）
+
+================================================================================
+

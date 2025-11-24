@@ -1,0 +1,32 @@
+name: Build and Test
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-jammy-ros-humble-desktop-latest
+    steps:
+      - name: Install Git LFS
+        run: |
+          sudo apt update
+          sudo apt install -y git-lfs
+
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          lfs: true
+
+      - name: Build pb2025_rm_vision
+        uses: ros-tooling/action-ros-ci@v0.3
+        with:
+          package-name: pb2025_rm_vision
+          target-ros2-distro: humble
+          vcs-repo-file-url: "${{ github.workspace }}/dependencies.repos"
+          skip-tests: true
+
+      - name: Test pb2025_rm_vision
+        run: |
+          /usr/bin/bash .github/workflows/colcon_test.sh pb2025_rm_vision
