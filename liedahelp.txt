@@ -1,0 +1,122 @@
+================================================================================
+雷达点云与 IMU 可视化调试
+================================================================================
+
+【重要说明】
+本项目雷达驱动使用 CustomMsg 格式（xfer_format=4），这是为了保证 Point-LIO
+导航系统的最优性能。RViz 的 PointCloud2 插件无法直接显示 CustomMsg 格式。
+
+⚠️ 不要修改 msg_MID360_launch.py 中的 xfer_format 为 0，否则会导致 Point-LIO
+无法接收数据，整车导航系统将完全失效！
+
+================================================================================
+方案1：查看 Point-LIO 处理后的点云（推荐用于导航调试）⭐⭐
+================================================================================
+
+# 终端1：播放 rosbag
+ros2 bag play <rosbag_path> --clock --loop
+
+# 终端2：启动 Point-LIO（会输出处理后的点云）
+ros2 launch point_lio mapping.launch.py
+
+# 终端3：启动 RViz 查看
+rviz2 -d ~/pb2025_sentry_ws/src/pb2025_sentry_nav/point_lio/rviz_cfg/loam_livox.rviz \
+  --ros-args -p use_sim_time:=True
+
+# 说明：
+# - Point-LIO 订阅 /livox/lidar (CustomMsg)
+# - 输出 /cloud_registered (PointCloud2) - 经过滤波和配准的点云
+# - 输出 /Odometry - 机器人位姿
+# - Fixed Frame: body
+# - 适合调试导航、定位、建图功能
+
+================================================================================
+方案2：查看雷达原始点云（推荐用于硬件调试）⭐
+================================================================================
+
+# 终端1：播放 rosbag（或启动实际硬件）
+ros2 bag play <rosbag_path> --clock --loop
+
+# 终端2：启动转换节点（CustomMsg → PointCloud2）
+ros2 run livox_ros_driver2 custom_to_pointcloud2.py
+
+# 终端3：启动 RViz
+rviz2 --ros-args -p use_sim_time:=True
+
+# 在 RViz 中手动添加点云显示：
+# 1. 点击左下角 "Add" 按钮
+# 2. 选择 "By topic" 标签
+# 3. 找到 /livox/lidar_pointcloud2 话题
+# 4. 选择 PointCloud2 类型，点击 OK
+# 5. 在左侧面板设置：
+#    - Fixed Frame: base_footprint
+#    - Size (Pixels): 3
+#    - Color Transformer: Intensity
+# 6. 可选：添加 /livox/imu 话题（Imu 类型）查看 IMU 数据
+
+# 说明：
+# - 转换节点订阅 /livox/lidar (CustomMsg)
+# - 发布 /livox/lidar_pointcloud2 (PointCloud2)
+# - 显示雷达原始点云，未经任何处理
+# - 适合调试雷达硬件、检查数据质量
+
+================================================================================
+方案3：实时硬件调试（不使用 rosbag）
+================================================================================
+
+# 终端1：启动雷达驱动
+ros2 launch livox_ros_driver2 msg_MID360_launch.py
+
+# 终端2：启动转换节点
+ros2 run livox_ros_driver2 custom_to_pointcloud2.py
+
+# 终端3：启动 RViz
+rviz2
+
+# 然后在 RViz 中添加 /livox/lidar_pointcloud2 话题（参考方案2）
+
+================================================================================
+数据验证命令
+================================================================================
+
+# 查看雷达相关话题
+ros2 topic list | grep livox
+
+# 查看数据频率
+ros2 topic hz /livox/lidar              # 原始 CustomMsg，约 10 Hz
+ros2 topic hz /livox/lidar_pointcloud2  # 转换后 PointCloud2，约 10 Hz
+ros2 topic hz /livox/imu                # IMU 数据，约 200 Hz
+
+# 查看点云消息内容
+ros2 topic echo /livox/lidar --once
+ros2 topic echo /livox/lidar_pointcloud2 --once
+
+# 查看 IMU 数据
+ros2 topic echo /livox/imu --once
+
+# 检查 TF 坐标系
+ros2 run tf2_tools view_frames
+evince frames.pdf
+
+================================================================================
+常见问题排查
+================================================================================
+
+问题1：RViz 显示 "Fixed Frame [livox_frame] does not exist"
+解决：将 Fixed Frame 改为 base_footprint 或 base_link
+
+问题2：点云不显示
+检查：
+- 确认话题有数据：ros2 topic hz /livox/lidar_pointcloud2
+- 确认 Fixed Frame 正确
+- 调整点云 Size (Pixels) 为 3-5
+- 检查点云是否在视野范围内（调整相机视角）
+
+问题3：转换节点报错 "No module named 'livox_ros_driver2'"
+解决：重新编译并 source
+cd ~/pb2025_sentry_ws
+colcon build --symlink-install --packages-select livox_ros_driver2
+source install/setup.bash
+
+问题4：Point-LIO 无法接收数据
+检查：确认 msg_MID360_launch.py 中 xfer_format = 4（不是 0）
