@@ -45,7 +45,7 @@ ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
   use_composition:=True \
   use_rviz:=True \
   detector:=opencv \
-  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+  params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml 
 
 # 说明：
 # - 串口节点订阅 /cmd_gimbal 和 /cmd_shoot，转发给 STM32
@@ -258,3 +258,4 @@ projectile_motion 节点自动处理射击：
 
 ================================================================================
 
+[ERROR] [component_container_isolated-1]: process has died [pid 154856, exit code -6, cmd '/opt/ros/humble/lib/rclcpp_components/component_container_isolated --ros-args --log-level info --ros-args -r __node:=rm_vision_container -r __ns:=/ --params-file /tmp/launch_params_iz4h3qz3 -r /tf:=tf -r /tf_static:=tf_static'].
