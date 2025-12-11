@@ -22,6 +22,77 @@ Behavior Tree
 ros2 launch pb2025_sentry_behavior pb2025_sentry_behavior_launch.py params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
 
 
+
+
+
+
+终端 1 - 启动串口节点（提供 IMU 数据和控制指令接收）
+  cd ~/pb2025_sentry_ws
+  source install/setup.bash
+  ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py \
+    params_file:=/home/happywosabi/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+  终端 2 - 启动 sp_vision_25（原生相机模式）
+  cd ~/pb2025_sentry_ws/testopenvino/sp_vision_25
+  source ~/pb2025_sentry_ws/install/setup.bash
+
+  # 方式 A: 使用启动脚本（推荐，有冲突检测）
+  ./run_sentry_native.sh
+
+  # 方式 B: 直接运行
+  ./build/sentry_ros2 configs/sentry.yaml
+
+  ⚠️ 重要:
+  - 不要启动 hik_camera_ros2_driver 节点（会与原生相机冲突）
+  - 如果之前启动过，先停止它：
+  pkill -f hik_camera_ros2_driver
+
+ros2 run rqt_image_view rqt_image_view /sentry_debug/image
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ================================================================================
 自瞄和雷达调试（无需真实裁判系统）
 ================================================================================

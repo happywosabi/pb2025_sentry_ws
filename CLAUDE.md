@@ -15,7 +15,12 @@ The system follows a modular ROS2 architecture with four main functional layers:
    - `hik_camera_ros2_driver`: HikRobot industrial camera driver for image acquisition
 
 2. **Perception Layer**
-   - `pb2025_rm_vision`: Armor plate detection and tracking
+   - **`sp_vision_25`** (NEW): High-performance vision system with native camera access
+     - Integrated YOLO detection, EKF tracking, ballistic solver in single node
+     - Publishes `/tracker/target` for decision layer
+     - Publishes `/cmd_gimbal`, `/cmd_shoot` for gimbal control
+     - Direct hardware access for <1ms latency (no ROS2 image topic overhead)
+   - `pb2025_rm_vision`: Original armor plate detection and tracking (legacy/backup)
      - `armor_detector_opencv` or `armor_detector_openvino`: Real-time enemy armor detection
      - `armor_tracker`: Extended Kalman Filter based target state estimation
      - `projectile_motion`: Ballistic trajectory calculation with compensation
@@ -86,14 +91,26 @@ ros2 launch pb2025_sentry_bringup bringup.launch.py \
   params_file:=<ABSOLUTE_PATH_TO_PARAMS>
 ```
 
+**NEW: Use sp_vision_25 high-performance vision**:
+```bash
+ros2 launch pb2025_sentry_bringup bringup.launch.py \
+  world:=<YOUR_WORLD_NAME> \
+  use_sp_vision:=True \
+  use_rviz:=True \
+  params_file:=<ABSOLUTE_PATH_TO_PARAMS>
+```
+
+**Note**: When `use_sp_vision:=True`, the hik_camera_ros2_driver will NOT start because sp_vision_25 directly accesses the camera hardware (exclusive access).
+
 Default parameters file: `./src/pb2025_sentry_bringup/params/node_params.yaml`
 
 Important launch arguments:
 - `world`: Map/PCD file basename (without extension)
+- `use_sp_vision`: Use sp_vision_25 (True) or original pb2025_rm_vision (False, default)
 - `use_sim_time`: Set to `True` when playing rosbags or in simulation
 - `use_composition`: Use composable nodes for better performance (default: True)
 - `use_robot_state_pub`: Publish TF from joint_state (needed for rosbag playback)
-- `detector`: Choose armor detector (`opencv` or `openvino`)
+- `detector`: Choose armor detector (`opencv` or `openvino`, only for pb2025_rm_vision)
 - `slam`: Enable SLAM mode (default: False)
 
 ### Individual Module Testing

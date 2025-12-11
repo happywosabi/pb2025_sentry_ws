@@ -35,6 +35,7 @@ def generate_launch_description():
 
     serial_bringup_dir = get_package_share_directory("standard_robot_pp_ros2")
     vision_bringup_dir = get_package_share_directory("pb2025_vision_bringup")
+    sp_vision_pkg = get_package_share_directory("sp_vision_25")  # sp_vision_25包目录
     navigation_bringup_dir = get_package_share_directory("pb2025_nav_bringup")
     bt_bringup_dir = get_package_share_directory("pb2025_sentry_behavior")
 
@@ -42,6 +43,7 @@ def generate_launch_description():
     ## Serial
     robot_name = LaunchConfiguration("robot_name")
     ## Vision
+    use_sp_vision = LaunchConfiguration("use_sp_vision")  # 使用sp_vision_25还是原有视觉
     detector = LaunchConfiguration("detector")
     use_hik_camera = LaunchConfiguration("use_hik_camera")
     ## Navigation
@@ -80,6 +82,12 @@ def generate_launch_description():
         "robot_name",
         default_value="pb2025_sentry_robot",
         description="The file name of the robot xmacro to be used",
+    )
+
+    declare_use_sp_vision_cmd = DeclareLaunchArgument(
+        "use_sp_vision",
+        default_value="False",
+        description="Use sp_vision_25 (True) or original pb2025_rm_vision (False)",
     )
 
     declare_detector_cmd = DeclareLaunchArgument(
@@ -196,6 +204,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(vision_bringup_dir, "launch", "rm_vision_reality_launch.py")
         ),
+        condition=IfCondition(PythonExpression(["not ", use_sp_vision])),  # 仅在不使用sp_vision时启动
         launch_arguments={
             "detector": detector,
             "use_hik_camera": use_hik_camera,
@@ -207,6 +216,16 @@ def generate_launch_description():
             "use_rviz": "False",
             "use_respawn": use_respawn,
             "log_level": log_level,
+        }.items(),
+    )
+
+    start_sp_vision_launch_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(sp_vision_pkg, "launch", "sp_vision_25.launch.py")
+        ),
+        condition=IfCondition(use_sp_vision),  # 仅在使用sp_vision时启动
+        launch_arguments={
+            "use_sim_time": use_sim_time,
         }.items(),
     )
 
@@ -274,6 +293,7 @@ def generate_launch_description():
 
     # Declare the launch options
     ld.add_action(declare_robot_name_cmd)
+    ld.add_action(declare_use_sp_vision_cmd)
     ld.add_action(declare_detector_cmd)
     ld.add_action(declare_use_hik_camera_cmd)
     ld.add_action(declare_slam_cmd)
@@ -294,6 +314,7 @@ def generate_launch_description():
     ld.add_action(start_rviz_cmd)
     ld.add_action(start_serial_driver_cmd)
     ld.add_action(start_vision_launch_cmd)
+    ld.add_action(start_sp_vision_launch_cmd)
     ld.add_action(start_navigation_launch_cmd)
     ld.add_action(start_behavior_launch_cmd)
     ld.add_action(record_rosbag_cmd)

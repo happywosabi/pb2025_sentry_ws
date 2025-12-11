@@ -2244,6 +2244,100 @@ private:
 - Week 1：创建适配器包，实现消息转换
 - Week 2：集成测试，参数调优
 
+#### 方案B详细设计
+
+**消息映射关系表**：
+
+| 数据流向 | sp_vision格式 | pb2025格式 | 转换复杂度 |
+|---------|--------------|-----------|-----------|
+| **输出：云台指令** | Command{yaw, pitch, control, shoot} | GimbalCmd{yaw_type, pitch_type, position} | ⭐ 简单 |
+| **输出：开火指令** | Command.shoot (bool) | UInt8.data (uint8) | ⭐ 简单 |
+| **输出：目标信息** | String "x,y,z,id" | Target{position, id, tracking} | ⭐⭐ 中等 |
+| **输入：相机图像** | cv::Mat (BGR) | sensor_msgs/Image | ⭐ 简单 (cv_bridge) |
+| **输入：IMU数据** | Eigen::Quaterniond | JointState{yaw, pitch} | ⭐⭐⭐ 复杂（需手眼标定） |
+| **输入：子弹速度** | double bullet_speed | RobotStatus.* | ⭐⭐ 中等（需确认字段） |
+
+**关键转换函数实现**：
+
+1. **Command → GimbalCmd转换**
+```cpp
+void convert_command_to_gimbal(const io::Command& cmd,
+                                pb_rm_interfaces::msg::GimbalCmd& gimbal_msg) {
+    // 控制模式设置
+    if (cmd.control) {
+        gimbal_msg.yaw_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
+        gimbal_msg.pitch_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
+    }
+
+    // 角度值转换 (double → float32, 都是弧度)
+    gimbal_msg.position.yaw = static_cast<float>(cmd.yaw);
+    gimbal_msg.position.pitch = static_cast<float>(cmd.pitch);
+
+    // 速度清零（位置控制模式）
+    gimbal_msg.velocity.yaw = 0.0f;
+    gimbal_msg.velocity.pitch = 0.0f;
+}
+```
+
+2. **JointState → Quaternion转换（关键）**
+```cpp
+Eigen::Quaterniond joint_to_quaternion(double yaw, double pitch,
+                                        const Eigen::Matrix3d& R_calib) {
+    // Z轴yaw旋转
+    Eigen::AngleAxisd yaw_rot(yaw, Eigen::Vector3d::UnitZ());
+    // Y轴pitch旋转
+    Eigen::AngleAxisd pitch_rot(pitch, Eigen::Vector3d::UnitY());
+
+    // 组合旋转
+    Eigen::Quaterniond q_gimbal = yaw_rot * pitch_rot;
+
+    // 应用手眼标定变换到世界坐标系
+    Eigen::Matrix3d R_world = R_calib * q_gimbal.toRotationMatrix();
+    return Eigen::Quaterniond(R_world);
+}
+```
+
+**实施步骤（14天详细计划）**：
+
+**Phase 1: 基础验证（Day 1-3）**
+- Day 1: 独立运行sp_vision_25，验证性能（命中率>30%）
+- Day 2: 确认pb2025消息定义，特别是RobotStatus中的子弹速度字段
+- Day 3: 创建sp_vision_ros2_adapter包框架
+
+**Phase 2: 核心开发（Day 4-7）**
+- Day 4: 实现输出转换函数（Command → GimbalCmd/UInt8）
+- Day 5: 实现简单输入转换（Image → cv::Mat，RobotStatus → bullet_speed）
+- Day 6-7: ⚠️ **关键**：实现并验证IMU四元数转换，确保PnP解算精度
+
+**Phase 3: 集成测试（Day 8-10）**
+- Day 8-9: 实现适配器主节点，配置QoS策略
+- Day 10: 数据流通测试，验证所有话题频率和数据正确性
+
+**Phase 4: 硬件调试（Day 11-12）**
+- Day 11: 实际硬件闭环测试（静止目标、移动目标、切换测试）
+- Day 12: 性能优化（降低延迟、提高精度、参数调优）
+
+**Phase 5: 文档交付（Day 13-14）**
+- Day 13: 编写完整文档（README, INSTALL, USAGE, TROUBLESHOOTING）
+- Day 14: 代码审查、单元测试、集成测试
+
+**关键风险管理**：
+
+| 风险项 | 影响 | 缓解措施 | 预留时间 |
+|--------|------|---------|---------|
+| IMU四元数转换不准确 | PnP解算错误 | 使用sp_vision标定工具重新标定 | Day 6-7 |
+| 子弹速度字段缺失 | 弹道计算错误 | 先用固定值，后续补充 | Day 2确认 |
+| 系统延迟超预期 | 性能下降 | 使用sensor_data QoS，考虑composable nodes | Day 12优化 |
+| sp_vision独立效果差 | 方案基础不稳 | Day 1立即验证，效果差则停止 | Day 1关键 |
+
+**验收标准**：
+- ✅ sp_vision独立运行命中率>30%
+- ✅ 适配器节点稳定运行，无崩溃
+- ✅ 所有话题频率>50Hz，数据格式正确
+- ✅ 实际硬件测试命中率35-38%
+- ✅ 端到端延迟<35ms
+- ✅ 代码规范，文档完善
+
 ---
 
 **方案C：完全替换（长期）**
