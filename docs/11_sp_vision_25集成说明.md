@@ -564,6 +564,120 @@ valgrind --leak-check=full \
 journalctl -f | grep sentry_ros2
 ```
 
+#### 3.5 相机连接不稳定或间断性错误
+
+**现象**：节点运行过程中出现相机错误，然后自动重连
+
+```
+[warning] MV_CC_GetImageBuffer failed: 0x80000007
+[info] HikRobot's capture thread stopped.
+[info] Reset usb successfully :)
+[warning] MV_CC_OpenDevice failed: 0x80000203
+[warning] MV_CC_StopGrabbing failed: 0x80000003
+[info] HikRobot's capture thread started.
+```
+
+**错误码含义**：
+- `0x80000007`: MV_E_NODATA - 获取图像超时，无数据
+- `0x80000203`: MV_E_UNKNOW - 未知错误，通常是权限或设备占用
+- `0x80000003`: MV_E_HANDLE - 句柄错误，设备未正确打开
+
+**排查步骤**：
+
+1. **检查 USB 连接和供电**：
+```bash
+# 查看 USB 设备信息
+lsusb -t | grep -i hik
+
+# 确认使用 USB 3.0 接口（蓝色接口）
+# 工业相机需要 USB 3.0 的高带宽支持
+```
+
+**解决方案**：
+- 使用主板后置的原生 USB 3.0 接口（不要用前置或扩展坞）
+- 避免与其他高带宽设备共用 USB 总线
+- 更换高质量的 USB 3.0 数据线（长度 ≤ 2 米）
+
+2. **检查设备权限**：
+```bash
+# 查看当前用户是否在正确的组中
+groups $USER | grep -E "video|dialout"
+
+# 如果没有，添加权限
+sudo usermod -a -G video $USER
+sudo usermod -a -G dialout $USER
+
+# 注销并重新登录以使组权限生效
+```
+
+3. **检查是否有其他程序占用相机**：
+```bash
+# 查找占用相机的进程
+lsof | grep video
+
+# 或使用 fuser
+sudo fuser /dev/video*
+
+# 如果发现其他进程占用，终止它们
+sudo kill -9 <PID>
+```
+
+4. **降低相机采集帧率和曝光时间**：
+
+编辑 `src/sp_vision_25/configs/sentry.yaml`：
+```yaml
+camera:
+  width: 1280
+  height: 720
+  exposure_time: 3000     # 降低曝光时间（微秒）
+  acquisition_frame_rate: 120.0  # 降低帧率
+```
+
+**说明**：较低的帧率和曝光时间可以减少 USB 带宽占用，提高稳定性。
+
+5. **增加 USB 缓冲区大小**：
+```bash
+# 临时增加 USB 缓冲区（需要 root 权限）
+sudo sh -c 'echo 1000 > /sys/module/usbcore/parameters/usbfs_memory_mb'
+
+# 永久设置（添加到 /etc/rc.local 或 systemd 服务）
+```
+
+6. **检查系统负载**：
+```bash
+# 监控 CPU 和内存使用
+htop
+
+# 如果 CPU 负载过高，考虑：
+# - 关闭调试可视化 (enable_visualization: false)
+# - 降低相机帧率
+# - 使用性能更好的 YOLO 模型
+```
+
+7. **固件和驱动更新**：
+```bash
+# 更新 HikRobot SDK（如果有新版本）
+# 从 HikRobot 官网下载最新的 MVS（Machine Vision Software）
+
+# 检查内核版本（某些老内核对 USB 3.0 支持不佳）
+uname -r
+# 建议使用 Linux 5.15+ 或 6.x 内核
+```
+
+**临时恢复方案**：
+
+如果相机频繁断连，程序内部已经实现了自动重连机制：
+- 检测到错误后自动重置 USB
+- 重新打开设备并恢复采集
+- 主循环会等待相机恢复后继续
+
+这不会导致节点崩溃，但会影响实时性。**建议优先解决硬件连接问题**。
+
+**典型场景**：
+- **场景 1**：使用 USB 3.0 扩展坞 → 更换为主板原生接口
+- **场景 2**：长时间运行后出现（散热问题）→ 增加散热，降低帧率
+- **场景 3**：多个 USB 设备同时工作 → 分配到不同的 USB 控制器
+
 ---
 
 ### 4. 参数调优指南
