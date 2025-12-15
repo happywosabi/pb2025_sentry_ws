@@ -5,6 +5,7 @@ log
 vision_spin_20250214_103515
 MvSdkLog
 rosbagnew
+logs
 
 .catkin_workspace
 .vscode
