@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sp_vision_25</name>
+  <version>1.0.0</version>
+  <description>High-performance vision system for SMBU PolarBear RoboMaster 2025 Sentry Robot</description>
+  <maintainer email="happywosabi@example.com">SMBU PolarBear Robotics Team</maintainer>
+  <license>Apache-2.0</license>
+  <author email="happywosabi@example.com">SMBU PolarBear Robotics Team</author>
+
+  <!-- buildtool_depend: dependencies of the build process -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- depend: build, export, and execution dependency -->
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>pb_rm_interfaces</depend>
+  <depend>auto_aim_interfaces</depend>
+  <depend>example_interfaces</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+  <depend>tf2_geometry_msgs</depend>
+
+  <!-- System dependencies -->
+  <depend>eigen</depend>
+  <depend>yaml-cpp</depend>
+  <depend>libopencv-dev</depend>
+
+  <!-- exec_depend: only execution dependencies -->
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_clang_format</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
