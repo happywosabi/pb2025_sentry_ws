@@ -135,8 +135,8 @@ void ROS2CBoard::joint_state_callback(const sensor_msgs::msg::JointState::Shared
     return;
   }
 
-  double yaw = msg->position[0];    // yaw关节角度 (rad)
-  double pitch = msg->position[1];  // pitch关节角度 (rad)
+  double pitch = msg->position[0];    // yaw关节角度 (rad)
+  double yaw = msg->position[1];  // pitch关节角度 (rad)
 
   // 转换为四元数
   Eigen::Quaterniond q = joint_angles_to_quaternion(yaw, pitch);

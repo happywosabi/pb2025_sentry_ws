@@ -1,0 +1,17 @@
+source ~/pb2025_sentry_ws/install/setup.bash
+ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py use_rviz:=True params_file:=/home/polarbear02/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
+use_composition:=True \
+use_rviz:=True \
+params_file:=/home/polarbear02/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
+
+export http_proxy="http://192.168.3.98:7897"
+export https_proxy="http://192.168.3.98:7897"
+
+source ~/pb2025_sentry_ws/install/setup.bash
+ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
+  use_composition:=True \
+  use_rviz:=True \
+  detector:=opencv \
+  params_file:=/home/polarbear02/pb2025_sentry_ws/src/pb2025_sentry_bringup/params/node_params.yaml
