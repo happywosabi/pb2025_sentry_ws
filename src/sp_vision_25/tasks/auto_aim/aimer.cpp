@@ -12,7 +12,7 @@
 namespace auto_aim
 {
 Aimer::Aimer(const std::string & config_path)
-: left_yaw_offset_(std::nullopt), right_yaw_offset_(std::nullopt)
+: left_yaw_offset_(std::nullopt), right_yaw_offset_(std::nullopt), last_valid_command_{false, false, 0, 0}
 {
   auto yaml = YAML::LoadFile(config_path);
   yaw_offset_ = yaml["yaw_offset"].as<double>() / 57.3;        // degree to rad
@@ -33,7 +33,13 @@ io::Command Aimer::aim(
   std::list<Target> targets, std::chrono::steady_clock::time_point timestamp, double bullet_speed,
   bool to_now)
 {
-  if (targets.empty()) return {false, false, 0, 0};
+  if (targets.empty()) {
+    // Return last known position instead of (0,0) to keep gimbal steady
+    io::Command cmd = last_valid_command_;
+    cmd.control = false;  // Not actively tracking
+    cmd.shoot = false;    // Don't shoot
+    return cmd;
+  }
   auto target = targets.front();
 
   auto ekf = target.ekf();
@@ -62,7 +68,10 @@ io::Command Aimer::aim(
   debug_aim_point = aim_point0;
   if (!aim_point0.valid) {
     // tools::logger()->debug("Invalid aim_point0.");
-    return {false, false, 0, 0};
+    io::Command cmd = last_valid_command_;
+    cmd.control = false;
+    cmd.shoot = false;
+    return cmd;
   }
 
   Eigen::Vector3d xyz0 = aim_point0.xyza.head(3);
@@ -72,7 +81,10 @@ io::Command Aimer::aim(
     tools::logger()->debug(
       "[Aimer] Unsolvable trajectory0: {:.2f} {:.2f} {:.2f}", bullet_speed, d0, xyz0[2]);
     debug_aim_point.valid = false;
-    return {false, false, 0, 0};
+    io::Command cmd = last_valid_command_;
+    cmd.control = false;
+    cmd.shoot = false;
+    return cmd;
   }
 
   // 迭代求解飞行时间 (最多10次，收敛条件：相邻两次fly_time差 <0.001)
@@ -90,7 +102,10 @@ io::Command Aimer::aim(
     auto aim_point = choose_aim_point(iteration_target[iter]);
     debug_aim_point = aim_point;
     if (!aim_point.valid) {
-      return {false, false, 0, 0};
+      io::Command cmd = last_valid_command_;
+      cmd.control = false;
+      cmd.shoot = false;
+      return cmd;
     }
 
     // 计算新弹道
@@ -104,7 +119,10 @@ io::Command Aimer::aim(
         "[Aimer] Unsolvable trajectory in iter {}: speed={:.2f}, d={:.2f}, z={:.2f}", iter + 1,
         bullet_speed, d, xyz.z());
       debug_aim_point.valid = false;
-      return {false, false, 0, 0};
+      io::Command cmd = last_valid_command_;
+      cmd.control = false;
+      cmd.shoot = false;
+      return cmd;
     }
 
     // 检查收敛条件
@@ -119,7 +137,11 @@ io::Command Aimer::aim(
   Eigen::Vector3d final_xyz = debug_aim_point.xyza.head(3);
   double yaw = std::atan2(final_xyz.y(), final_xyz.x()) + yaw_offset_;
   double pitch = -(current_traj.pitch + pitch_offset_);  //世界坐标系下pitch向上为负
-  return {true, false, yaw, pitch};
+
+  // Save this valid command for lost target handling
+  io::Command cmd = {true, false, yaw, pitch};
+  last_valid_command_ = cmd;
+  return cmd;
 }
 
 io::Command Aimer::aim(
@@ -137,6 +159,11 @@ io::Command Aimer::aim(
 
   auto command = aim(targets, timestamp, bullet_speed, to_now);
   command.yaw = command.yaw - yaw_offset_ + yaw_offset;
+
+  // Update last_valid_command if this is a successful tracking command
+  if (command.control) {
+    last_valid_command_ = command;
+  }
 
   return command;
 }

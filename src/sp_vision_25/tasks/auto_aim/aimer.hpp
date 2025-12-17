@@ -41,6 +41,7 @@ private:
   double high_speed_delay_time_;
   double low_speed_delay_time_;
   double decision_speed_;
+  io::Command last_valid_command_;  // Store last known good command for lost target handling
 
   AimPoint choose_aim_point(const Target & target);
 };

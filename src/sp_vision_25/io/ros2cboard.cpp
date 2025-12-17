@@ -105,8 +105,14 @@ void ROS2CBoard::send(Command command)
     gimbal_cmd.pitch_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
     gimbal_cmd.position.yaw = static_cast<float>(command.yaw);
     gimbal_cmd.position.pitch = static_cast<float>(command.pitch);
+  } else if (command.yaw != 0.0 || command.pitch != 0.0) {
+    // 目标丢失但有最后已知位置：发送绝对角度以保持云台位置
+    gimbal_cmd.yaw_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
+    gimbal_cmd.pitch_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
+    gimbal_cmd.position.yaw = static_cast<float>(command.yaw);
+    gimbal_cmd.position.pitch = static_cast<float>(command.pitch);
   } else {
-    // 不控制模式：速度设为0
+    // 完全无控制模式：速度设为0
     gimbal_cmd.yaw_type = pb_rm_interfaces::msg::GimbalCmd::VELOCITY;
     gimbal_cmd.pitch_type = pb_rm_interfaces::msg::GimbalCmd::VELOCITY;
     gimbal_cmd.velocity.yaw = 0.0f;
