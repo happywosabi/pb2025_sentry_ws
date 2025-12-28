@@ -1,6 +1,6 @@
-pattern_cols: 10
-pattern_rows: 7
-center_distance_mm: 40
+pattern_cols: 10              # 内角点列数（11列方格 → 10列角点）
+pattern_rows: 7               # 内角点行数（8行方格 → 7行角点）
+square_size_mm: 15            # 方格边长（毫米）
 
 R_gimbal2imubody: [1, 0, 0, 0, 1, 0,  0, 0, 1]
 

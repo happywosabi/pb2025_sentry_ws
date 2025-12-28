@@ -1,4 +1,5 @@
 #include <fmt/core.h>
+#include <yaml-cpp/yaml.h>  // 用于读取配置文件
 
 #include <filesystem>
 #include <opencv2/opencv.hpp>
@@ -23,6 +24,13 @@ int main(int argc, char * argv[])
   auto config_path = cli.get<std::string>(0);
   auto output_folder = cli.get<std::string>("output-folder");
 
+  // 从 YAML 读取标定板参数
+  auto yaml = YAML::LoadFile(config_path);
+  auto pattern_cols = yaml["pattern_cols"].as<int>();
+  auto pattern_rows = yaml["pattern_rows"].as<int>();
+  auto square_size_mm = yaml["square_size_mm"].as<double>();
+  cv::Size pattern_size(pattern_cols, pattern_rows);
+
   // 创建输出文件夹（修复：使用 create_directories）
   std::filesystem::create_directories(output_folder);
 
@@ -31,7 +39,10 @@ int main(int argc, char * argv[])
   cv::Mat img;
   std::chrono::steady_clock::time_point timestamp;
 
-  tools::logger()->info("默认标定板尺寸为10列7行");
+  tools::logger()->info("标定板配置：{}列{}行内角点（{}×{}方格），方格边长{}mm",
+                        pattern_cols, pattern_rows,
+                        pattern_cols + 1, pattern_rows + 1,
+                        square_size_mm);
   tools::logger()->info("仅相机内参标定模式（无IMU）");
   tools::logger()->info("输出目录: {}", output_folder);
 
@@ -42,10 +53,24 @@ int main(int argc, char * argv[])
     // 显示图像
     auto img_display = img.clone();
 
-    // 识别标定板
-    std::vector<cv::Point2f> centers_2d;
-    auto success = cv::findCirclesGrid(img, cv::Size(10, 7), centers_2d);
-    cv::drawChessboardCorners(img_display, cv::Size(10, 7), centers_2d, success);
+    // 识别标定板（改用棋盘格检测）
+    std::vector<cv::Point2f> corners_2d;
+    auto success = cv::findChessboardCorners(
+      img, pattern_size, corners_2d,
+      cv::CALIB_CB_ADAPTIVE_THRESH | cv::CALIB_CB_NORMALIZE_IMAGE | cv::CALIB_CB_FAST_CHECK
+    );
+
+    // 亚像素优化（提高精度）
+    if (success) {
+      cv::Mat gray;
+      cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+      cv::cornerSubPix(
+        gray, corners_2d, cv::Size(11, 11), cv::Size(-1, -1),
+        cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 30, 0.1)
+      );
+    }
+
+    cv::drawChessboardCorners(img_display, pattern_size, corners_2d, success);
 
     // 显示计数和提示
     tools::draw_text(img_display, fmt::format("Saved: {}", count), {40, 40}, {0, 255, 0});
