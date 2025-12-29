@@ -136,16 +136,16 @@ void SerialIMU::receive_thread_func()
         continue;
       }
 
-      // 4. 读取数据段
+      // 4. 读取数据段（包括CRC16的2字节）
       size_t data_len = header->len;
-      bytes_read = serial_.read(buffer + 4, data_len);
-      if (bytes_read != data_len) {
-        tools::logger()->warn("[SerialIMU] Incomplete data: expected {}, got {}", data_len, bytes_read);
+      bytes_read = serial_.read(buffer + 4, data_len + 2);  // +2 for CRC16
+      if (bytes_read != data_len + 2) {
+        tools::logger()->warn("[SerialIMU] Incomplete data: expected {}, got {}", data_len + 2, bytes_read);
         continue;
       }
 
       // 5. 验证整包CRC16
-      size_t total_len = 4 + data_len;
+      size_t total_len = 4 + data_len + 2;  // 包头(4) + 数据(len) + CRC16(2)
       if (!verify_crc16(buffer, total_len)) {
         tools::logger()->warn("[SerialIMU] Packet CRC16 failed");
         continue;
@@ -241,7 +241,8 @@ uint16_t SerialIMU::get_crc16(const uint8_t * data, uint32_t len)
 bool SerialIMU::verify_crc16(const uint8_t * data, uint32_t len)
 {
   if (len <= 2) return false;
-  uint16_t expected_crc = (data[len - 1] << 8) | data[len - 2];
+  // 小端序：低字节在前，高字节在后
+  uint16_t expected_crc = data[len - 2] | (data[len - 1] << 8);
   return get_crc16(data, len - 2) == expected_crc;
 }
 
