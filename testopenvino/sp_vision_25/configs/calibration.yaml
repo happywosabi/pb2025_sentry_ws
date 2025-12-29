@@ -5,7 +5,7 @@ square_size_mm: 15            # 方格边长（毫米）
 R_gimbal2imubody: [1, 0, 0, 0, 1, 0,  0, 0, 1]
 
 camera_name: "hikrobot"
-exposure_ms: 3
+exposure_ms: 20
 gain: 10.0
 vid_pid: "2bdf:0001"
 
