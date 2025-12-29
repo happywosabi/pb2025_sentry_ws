@@ -14,3 +14,7 @@ quaternion_canid: 0x01
 bullet_speed_canid: 0x110
 send_canid: 0xff
 can_interface: "can0"
+
+#####-----SerialIMU参数-----#####
+serial_imu_port: "/dev/ttyACM0"
+serial_imu_baudrate: 115200
