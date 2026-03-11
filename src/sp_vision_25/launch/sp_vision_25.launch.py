@@ -52,8 +52,9 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time
         }],
-        # 注意：不传递config_path作为参数，因为sentry_ros2从package share自动加载
-        # 如果需要自定义配置，可以通过命令行参数传递给可执行文件
+        # 将config_path作为命令行位置参数传递给可执行文件
+        # sentry_ros2的C++代码通过argv[1]读取配置文件路径
+        arguments=[config_path],
     )
 
     # 创建launch description
