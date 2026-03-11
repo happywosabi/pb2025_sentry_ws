@@ -242,6 +242,7 @@ def generate_launch_description():
         condition=IfCondition(use_sp_vision),  # 仅在使用sp_vision时启动
         launch_arguments={
             "use_sim_time": use_sim_time,
+            "use_rviz": "False",  # sp_vision不单独启动RViz，由主launch统一管理
             "config_path": sp_vision_config_path,  # 传递配置文件路径
         }.items(),
     )
