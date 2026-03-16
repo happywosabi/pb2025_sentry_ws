@@ -152,6 +152,14 @@ void SmallGicpRelocalizationNode::performRegistration()
     return;
   }
 
+  if (target_->empty()) {
+    RCLCPP_ERROR_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Target point cloud is empty! Check prior_pcd_file: '%s'",
+      prior_pcd_file_.c_str());
+    return;
+  }
+
   source_ = small_gicp::voxelgrid_sampling_omp<
     pcl::PointCloud<pcl::PointXYZ>, pcl::PointCloud<pcl::PointCovariance>>(
     *accumulated_cloud_, registered_leaf_size_);

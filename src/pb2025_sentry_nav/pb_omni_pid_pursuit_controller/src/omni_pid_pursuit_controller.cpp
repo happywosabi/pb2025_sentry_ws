@@ -113,6 +113,18 @@ void OmniPidPursuitController::configure(
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_velocity_scaling_factor_rate", rclcpp::ParameterValue(0.9));
 
+  // ========== 避障参数 ==========
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".enable_obstacle_avoidance", rclcpp::ParameterValue(true));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".laser_topic", rclcpp::ParameterValue("obstacle_scan"));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".obstacle_stop_distance", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".obstacle_slowdown_distance", rclcpp::ParameterValue(1.0));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".min_speed_factor", rclcpp::ParameterValue(0.2));
+
   node->get_parameter(plugin_name_ + ".translation_kp", translation_kp_);
   node->get_parameter(plugin_name_ + ".translation_ki", translation_ki_);
   node->get_parameter(plugin_name_ + ".translation_kd", translation_kd_);
@@ -156,6 +168,19 @@ void OmniPidPursuitController::configure(
   node->get_parameter(
     plugin_name_ + ".max_velocity_scaling_factor_rate", max_velocity_scaling_factor_rate_);
 
+  // ========== 避障参数 ==========
+  node->get_parameter(plugin_name_ + ".enable_obstacle_avoidance", enable_obstacle_avoidance_);
+  node->get_parameter(plugin_name_ + ".laser_topic", laser_topic_);
+  node->get_parameter(plugin_name_ + ".obstacle_stop_distance", obstacle_stop_distance_);
+  node->get_parameter(plugin_name_ + ".obstacle_slowdown_distance", obstacle_slowdown_distance_);
+  node->get_parameter(plugin_name_ + ".min_speed_factor", min_speed_factor_);
+
+  RCLCPP_INFO(logger_, "Obstacle avoidance enabled: %s", enable_obstacle_avoidance_ ? "true" : "false");
+  RCLCPP_INFO(logger_, "Laser topic: %s", laser_topic_.c_str());
+  RCLCPP_INFO(logger_, "Obstacle stop distance: %.2f m", obstacle_stop_distance_);
+  RCLCPP_INFO(logger_, "Obstacle slowdown distance: %.2f m", obstacle_slowdown_distance_);
+  // ========================================
+
   node->get_parameter("controller_frequency", control_frequency);
 
   transform_tolerance_ = tf2::durationFromSec(transform_tolerance);
@@ -165,8 +190,21 @@ void OmniPidPursuitController::configure(
   carrot_pub_ = node->create_publisher<geometry_msgs::msg::PointStamped>("lookahead_point", 1);
   curvature_points_pub_ =
     node_.lock()
-      ->create_publisher<visualization_msgs::msg::MarkerArray>(  // 初始化 MarkerArray Publisher
+      ->create_publisher<visualization_msgs::msg::MarkerArray>(
         "curvature_points_marker_array", rclcpp::QoS(10));
+
+  // ========== 激光订阅和可视化发布器 ==========
+  if (enable_obstacle_avoidance_) {
+    laser_scan_sub_ = node->create_subscription<sensor_msgs::msg::LaserScan>(
+      laser_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&OmniPidPursuitController::laserScanCallback, this, std::placeholders::_1));
+
+    obstacle_sectors_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>(
+      "obstacle_sectors", rclcpp::QoS(10));
+
+    RCLCPP_INFO(logger_, "Subscribed to laser topic: %s", laser_topic_.c_str());
+  }
+  // ======================================================
 
   move_pid_ = std::make_shared<PID>(
     control_duration_, v_linear_max_, v_linear_min_, translation_kp_, translation_kd_,
@@ -185,6 +223,10 @@ void OmniPidPursuitController::cleanup()
   local_path_pub_.reset();
   carrot_pub_.reset();
   curvature_points_pub_.reset();
+  // ========== 清理避障相关 ==========
+  laser_scan_sub_.reset();
+  obstacle_sectors_pub_.reset();
+  // ========================================
 }
 
 void OmniPidPursuitController::activate()
@@ -197,6 +239,11 @@ void OmniPidPursuitController::activate()
   local_path_pub_->on_activate();
   carrot_pub_->on_activate();
   curvature_points_pub_->on_activate();
+  // ==========避障发布器 ==========
+  if (obstacle_sectors_pub_) {
+    obstacle_sectors_pub_->on_activate();
+  }
+  // ==========================================
   // Add callback for dynamic parameters
   auto node = node_.lock();
   dyn_params_handler_ = node->add_on_set_parameters_callback(
@@ -213,8 +260,296 @@ void OmniPidPursuitController::deactivate()
   local_path_pub_->on_deactivate();
   carrot_pub_->on_deactivate();
   curvature_points_pub_->on_deactivate();
+  // ========== 停用避障发布器 ==========
+  if (obstacle_sectors_pub_) {
+    obstacle_sectors_pub_->on_deactivate();
+  }
+  // ==========================================
   dyn_params_handler_.reset();
 }
+
+// ========== 激光回调函数 ==========
+void OmniPidPursuitController::laserScanCallback(
+  const sensor_msgs::msg::LaserScan::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(scan_mutex_);
+  latest_scan_ = msg;
+}
+// ========================================
+
+// ==========  6扇区障碍物分析函数 ==========
+double OmniPidPursuitController::analyzeObstaclesAndGetSpeedFactor()
+{
+  std::lock_guard<std::mutex> lock(scan_mutex_);
+
+  if (!latest_scan_ || latest_scan_->ranges.empty()) {
+    return 1.0;  // 没有激光数据，保持全速
+  }
+
+  const auto & scan = *latest_scan_;
+  const size_t num_readings = scan.ranges.size();
+  const double angle_min = scan.angle_min;
+  const double angle_increment = scan.angle_increment;
+
+  // 6个扇区，每个60度
+  // 扇区0: 前方 [-30°, +30°]
+  // 扇区1: 右前 [-90°, -30°]
+  // 扇区2: 右后 [-150°, -90°]
+  // 扇区3: 后方 [±150°, ±180°]
+  // 扇区4: 左后 [90°, 150°]
+  // 扇区5: 左前 [30°, 90°]
+  const int NUM_SECTORS = 6;
+  std::vector<double> sector_min_distances(NUM_SECTORS, std::numeric_limits<double>::infinity());
+
+  // 扇区边界角度 (弧度)
+  const double sector_boundaries[NUM_SECTORS + 1] = {
+    -M_PI,           // -180°
+    -5.0 * M_PI / 6.0, // -150°
+    -M_PI / 2.0,     // -90°
+    -M_PI / 6.0,     // -30°
+    M_PI / 6.0,      // +30°
+    M_PI / 2.0,      // +90°
+    5.0 * M_PI / 6.0   // +150°
+  };
+
+  // 遍历所有激光点
+  for (size_t i = 0; i < num_readings; ++i) {
+    double range = scan.ranges[i];
+
+    // 跳过无效读数
+    if (std::isnan(range) || std::isinf(range) ||
+        range < scan.range_min || range > scan.range_max) {
+      continue;
+    }
+
+    // 计算角度
+    double angle = angle_min + i * angle_increment;
+
+    // 归一化到 [-π, π]
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+
+    // 确定扇区
+    int sector = -1;
+    if (angle >= sector_boundaries[3] && angle < sector_boundaries[4]) {
+      sector = 0;  // 前方
+    } else if (angle >= sector_boundaries[2] && angle < sector_boundaries[3]) {
+      sector = 1;  // 右前
+    } else if (angle >= sector_boundaries[1] && angle < sector_boundaries[2]) {
+      sector = 2;  // 右后
+    } else if (angle < sector_boundaries[1] || angle >= sector_boundaries[6]) {
+      sector = 3;  // 后方
+    } else if (angle >= sector_boundaries[5] && angle < sector_boundaries[6]) {
+      sector = 4;  // 左后
+    } else if (angle >= sector_boundaries[4] && angle < sector_boundaries[5]) {
+      sector = 5;  // 左前
+    }
+
+    if (sector >= 0 && sector < NUM_SECTORS) {
+      sector_min_distances[sector] = std::min(sector_min_distances[sector], range);
+    }
+  }
+
+  // 发布可视化
+  publishObstacleSectorMarkers(sector_min_distances, scan.header.frame_id);
+
+  // 只检查前方3个扇区 (0, 1, 5)
+  double min_front_distance = std::numeric_limits<double>::infinity();
+  for (int s : {0, 1, 5}) {
+    min_front_distance = std::min(min_front_distance, sector_min_distances[s]);
+  }
+
+  // 计算速度因子
+  double speed_factor = 1.0;
+
+  if (min_front_distance < obstacle_stop_distance_) {
+    // 太近了，停止
+    speed_factor = 0.0;
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 500,
+      "Obstacle too close (%.2f m), stopping!", min_front_distance);
+  } else if (min_front_distance < obstacle_slowdown_distance_) {
+    // 线性减速
+    speed_factor = min_speed_factor_ +
+      (1.0 - min_speed_factor_) *
+      (min_front_distance - obstacle_stop_distance_) /
+      (obstacle_slowdown_distance_ - obstacle_stop_distance_);
+    RCLCPP_DEBUG(logger_, "Obstacle at %.2f m, speed factor: %.2f",
+      min_front_distance, speed_factor);
+  }
+
+  return speed_factor;
+}
+// ================================================
+
+// ========== 新增: 可视化发布函数 ==========
+void OmniPidPursuitController::publishObstacleSectorMarkers(
+  const std::vector<double> & sector_distances,
+  const std::string & frame_id)
+{
+  if (!obstacle_sectors_pub_ || sector_distances.size() < 6) {
+    return;
+  }
+
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  // 扇区中心角度
+  const double sector_centers[6] = {
+    0.0,              // 前方
+    -M_PI / 3.0,      // 右前 (-60°)
+    -2.0 * M_PI / 3.0, // 右后 (-120°)
+    M_PI,             // 后方
+    2.0 * M_PI / 3.0,  // 左后 (120°)
+    M_PI / 3.0         // 左前 (60°)
+  };
+
+  const char* sector_names[6] = {"Front", "FrontRight", "RearRight", "Rear", "RearLeft", "FrontLeft"};
+
+  for (int i = 0; i < 6; ++i) {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = frame_id;
+    marker.header.stamp = clock_->now();
+    marker.ns = "obstacle_sectors";
+    marker.id = i;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    // 画扇区边界线
+    double angle = sector_centers[i];
+    double dist = std::min(sector_distances[i], obstacle_slowdown_distance_);
+
+    geometry_msgs::msg::Point p1, p2;
+    p1.x = 0.0;
+    p1.y = 0.0;
+    p1.z = 0.1;
+    p2.x = dist * cos(angle);
+    p2.y = dist * sin(angle);
+    p2.z = 0.1;
+
+    marker.points.push_back(p1);
+    marker.points.push_back(p2);
+
+    marker.scale.x = 0.05;
+
+    // 颜色：前方3个扇区根据距离变色，后方灰色
+    if (i == 0 || i == 1 || i == 5) {
+      if (sector_distances[i] < obstacle_stop_distance_) {
+        marker.color.r = 1.0; marker.color.g = 0.0; marker.color.b = 0.0;  // 红色
+      } else if (sector_distances[i] < obstacle_slowdown_distance_) {
+        marker.color.r = 1.0; marker.color.g = 0.5; marker.color.b = 0.0;  // 橙色
+      } else {
+        marker.color.r = 0.0; marker.color.g = 1.0; marker.color.b = 0.0;  // 绿色
+      }
+    } else {
+      marker.color.r = 0.5; marker.color.g = 0.5; marker.color.b = 0.5;  // 灰色
+    }
+    marker.color.a = 1.0;
+
+    marker.lifetime = rclcpp::Duration::from_seconds(0.2);
+
+    marker_array.markers.push_back(marker);
+  }
+
+  obstacle_sectors_pub_->publish(marker_array);
+}
+// ==========================================
+
+// ==========横向避障速度计算函数 ==========
+double OmniPidPursuitController::getObstacleAvoidanceLateralVelocity()
+{
+  std::lock_guard<std::mutex> lock(scan_mutex_);
+
+  if (!latest_scan_ || latest_scan_->ranges.empty()) {
+    return 0.0;  // 没有激光数据，不偏移
+  }
+
+  const auto & scan = *latest_scan_;
+  const size_t num_readings = scan.ranges.size();
+  const double angle_min = scan.angle_min;
+  const double angle_increment = scan.angle_increment;
+
+  // 只检测前方3个扇区的最小距离
+  // 扇区0: 前方 [-30°, +30°]
+  // 扇区1: 右前 [-90°, -30°]  
+  // 扇区5: 左前 [30°, 90°]
+  double front_min = std::numeric_limits<double>::infinity();
+  double right_front_min = std::numeric_limits<double>::infinity();
+  double left_front_min = std::numeric_limits<double>::infinity();
+
+  for (size_t i = 0; i < num_readings; ++i) {
+    double range = scan.ranges[i];
+    if (std::isnan(range) || std::isinf(range) ||
+        range < scan.range_min || range > scan.range_max) {
+      continue;
+    }
+
+    double angle = angle_min + i * angle_increment;
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+
+    // 前方 [-30°, +30°]
+    if (angle >= -M_PI/6.0 && angle < M_PI/6.0) {
+      front_min = std::min(front_min, range);
+    }
+    // 右前 [-90°, -30°]
+    else if (angle >= -M_PI/2.0 && angle < -M_PI/6.0) {
+      right_front_min = std::min(right_front_min, range);
+    }
+    // 左前 [30°, 90°]
+    else if (angle >= M_PI/6.0 && angle < M_PI/2.0) {
+      left_front_min = std::min(left_front_min, range);
+    }
+  }
+
+  // 计算横向偏移速度
+  double lateral_vel = 0.0;
+  double avoidance_gain = 0.8;  // 偏移增益，可调
+
+  // 如果前方3个扇区都没有障碍物，不需要偏移
+  double min_front_distance = std::min({front_min, right_front_min, left_front_min});
+  if (min_front_distance > obstacle_slowdown_distance_) {
+    return 0.0;
+  }
+
+  // 策略：往更空旷的方向偏
+  // 右前有障碍 → 往左偏（正Y）
+  // 左前有障碍 → 往右偏（负Y）
+  
+  if (right_front_min < obstacle_slowdown_distance_ && 
+      left_front_min >= obstacle_slowdown_distance_) {
+    // 右边有障碍，左边没有 → 往左偏
+    double urgency = 1.0 - (right_front_min - obstacle_stop_distance_) / 
+                          (obstacle_slowdown_distance_ - obstacle_stop_distance_);
+    urgency = std::clamp(urgency, 0.0, 1.0);
+    lateral_vel = avoidance_gain * urgency;
+  }
+  else if (left_front_min < obstacle_slowdown_distance_ && 
+           right_front_min >= obstacle_slowdown_distance_) {
+    // 左边有障碍，右边没有 → 往右偏
+    double urgency = 1.0 - (left_front_min - obstacle_stop_distance_) / 
+                          (obstacle_slowdown_distance_ - obstacle_stop_distance_);
+    urgency = std::clamp(urgency, 0.0, 1.0);
+    lateral_vel = -avoidance_gain * urgency;
+  }
+  else if (front_min < obstacle_slowdown_distance_) {
+    // 正前方有障碍 → 看左右哪边更空旷
+    if (left_front_min > right_front_min) {
+      // 左边更空 → 往左偏
+      double urgency = 1.0 - (front_min - obstacle_stop_distance_) / 
+                            (obstacle_slowdown_distance_ - obstacle_stop_distance_);
+      urgency = std::clamp(urgency, 0.0, 1.0);
+      lateral_vel = avoidance_gain * urgency;
+    } else {
+      // 右边更空 → 往右偏
+      double urgency = 1.0 - (front_min - obstacle_stop_distance_) / 
+                            (obstacle_slowdown_distance_ - obstacle_stop_distance_);
+      urgency = std::clamp(urgency, 0.0, 1.0);
+      lateral_vel = -avoidance_gain * urgency;
+    }
+  }
+
+  return lateral_vel;
+}
+// ================================================
 
 geometry_msgs::msg::TwistStamped OmniPidPursuitController::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & pose, const geometry_msgs::msg::Twist & velocity,
@@ -252,6 +587,16 @@ geometry_msgs::msg::TwistStamped OmniPidPursuitController::computeVelocityComman
 
   applyApproachVelocityScaling(transformed_plan, lin_vel);
 
+  // ========== 激光避障速度调整 ==========
+  double obstacle_lateral_vel = 0.0;
+  if (enable_obstacle_avoidance_) {
+    double obstacle_speed_factor = analyzeObstaclesAndGetSpeedFactor();
+    lin_vel *= obstacle_speed_factor;
+    
+    //获取横向避障速度
+    obstacle_lateral_vel = getObstacleAvoidanceLateralVelocity();
+  }
+  // ======================================
   // Transform local frame to global frame to use in collision checking
   nav_msgs::msg::Path costmap_frame_local_plan;
 
@@ -268,8 +613,11 @@ geometry_msgs::msg::TwistStamped OmniPidPursuitController::computeVelocityComman
   cmd_vel.header = pose.header;
   if (!isCollisionDetected(costmap_frame_local_plan)) {
     cmd_vel.twist.linear.x = lin_vel * cos(theta_dist);
-    cmd_vel.twist.linear.y = lin_vel * sin(theta_dist);
+    cmd_vel.twist.linear.y = lin_vel * sin(theta_dist) + obstacle_lateral_vel;  // 添加横向偏移
     cmd_vel.twist.angular.z = angular_vel;
+    
+    // 限制横向速度不超过最大值
+    cmd_vel.twist.linear.y = std::clamp(cmd_vel.twist.linear.y, v_linear_min_, v_linear_max_);
   } else {
     throw nav2_core::PlannerException("Collision detected in the trajectory. Stopping the robot!");
   }
@@ -744,6 +1092,15 @@ rcl_interfaces::msg::SetParametersResult OmniPidPursuitController::dynamicParame
       } else if (name == plugin_name_ + ".max_velocity_scaling_factor_rate") {
         max_velocity_scaling_factor_rate_ = parameter.as_double();
       }
+      // ========== 动态参数支持 ==========
+      else if (name == plugin_name_ + ".obstacle_stop_distance") {
+        obstacle_stop_distance_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".obstacle_slowdown_distance") {
+        obstacle_slowdown_distance_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".min_speed_factor") {
+        min_speed_factor_ = parameter.as_double();
+      }
+      // ========================================
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == plugin_name_ + ".use_velocity_scaled_lookahead_dist") {
         use_velocity_scaled_lookahead_dist_ = parameter.as_bool();
@@ -752,6 +1109,11 @@ rcl_interfaces::msg::SetParametersResult OmniPidPursuitController::dynamicParame
       } else if (name == plugin_name_ + ".use_rotate_to_heading") {
         use_rotate_to_heading_ = parameter.as_bool();
       }
+      // ========== 动态参数支持 ==========
+      else if (name == plugin_name_ + ".enable_obstacle_avoidance") {
+        enable_obstacle_avoidance_ = parameter.as_bool();
+      }
+      // ========================================
     }
   }
   result.successful = true;

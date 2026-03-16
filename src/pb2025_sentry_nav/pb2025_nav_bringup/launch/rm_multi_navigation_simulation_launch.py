@@ -57,8 +57,8 @@ def generate_launch_description():
     # Declare the launch arguments
     declare_world_cmd = DeclareLaunchArgument(
         "world",
-        default_value="rmul_2024",
-        description="Select world: 'rmul_2024' or 'rmuc_2024' (map file share the same name as the this parameter)",
+        default_value="rmul_2026",
+        description="Select world: 'rmul_2024' or 'rmuc_2024' or 'rmul_2026' etc. (map file share the same name as the this parameter)",
     )
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
@@ -69,6 +69,17 @@ def generate_launch_description():
             TextSubstitution(text=".yaml"),
         ],
         description="Full path to map file to load",
+    )
+
+    prior_pcd_file = LaunchConfiguration("prior_pcd_file")
+    declare_prior_pcd_file_cmd = DeclareLaunchArgument(
+        "prior_pcd_file",
+        default_value=[
+            TextSubstitution(text=os.path.join(bringup_dir, "pcd", "simulation", "")),
+            world,
+            TextSubstitution(text=".pcd"),
+        ],
+        description="Full path to prior pcd file to load",
     )
     declare_params_file_cmd = DeclareLaunchArgument(
         "params_file",
@@ -129,6 +140,7 @@ def generate_launch_description():
                     launch_arguments={
                         "namespace": robot_name,
                         "map": map_yaml_file,
+                        "prior_pcd_file": prior_pcd_file,
                         "use_sim_time": "True",
                         "params_file": params_file,
                         "autostart": autostart,
@@ -154,6 +166,7 @@ def generate_launch_description():
     # Declare the launch options
     ld.add_action(declare_world_cmd)
     ld.add_action(declare_map_yaml_cmd)
+    ld.add_action(declare_prior_pcd_file_cmd)
     ld.add_action(declare_params_file_cmd)
     ld.add_action(declare_use_rviz_cmd)
     ld.add_action(declare_autostart_cmd)

@@ -23,6 +23,10 @@
 #include "pb_omni_pid_pursuit_controller/pid.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
+
+#include <sensor_msgs/msg/laser_scan.hpp>
+// =============================================
+
 namespace pb_omni_pid_pursuit_controller
 {
 
@@ -196,6 +200,35 @@ protected:
    */
   bool isCollisionDetected(const nav_msgs::msg::Path & path);
 
+  // ========== 激光避障方法声明 ==========
+  /**
+   * @brief Callback for laser scan messages
+   * @param msg Laser scan message
+   */
+  void laserScanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+
+  /**
+   * @brief Analyze obstacles in 6 sectors and return speed scaling factor
+   * @return Speed factor (0.0 = stop, 1.0 = full speed)
+   */
+  double analyzeObstaclesAndGetSpeedFactor();
+
+  /**
+   * @brief Publish obstacle sector visualization markers
+   * @param sector_distances Minimum distance in each sector
+   * @param frame_id Frame ID for markers
+   */
+  void publishObstacleSectorMarkers(
+    const std::vector<double> & sector_distances,
+    const std::string & frame_id);
+  // ============================================
+
+  /**
+   * @brief Get lateral avoidance velocity based on obstacle positions
+   * @return Lateral velocity (positive = left, negative = right)
+   */
+  double getObstacleAvoidanceLateralVelocity();
+
 private:
   /**
    * @brief Applies curvature based speed limitation
@@ -304,6 +337,24 @@ private:
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PointStamped>::SharedPtr carrot_pub_;
   rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
     curvature_points_pub_;
+
+  // ==========激光避障 ==========
+  // 激光雷达订阅和数据
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_scan_sub_;
+  sensor_msgs::msg::LaserScan::SharedPtr latest_scan_;
+  std::mutex scan_mutex_;
+
+  // 避障参数
+  bool enable_obstacle_avoidance_;
+  std::string laser_topic_;
+  double obstacle_stop_distance_;
+  double obstacle_slowdown_distance_;
+  double min_speed_factor_;
+
+  // 可视化发布器
+  rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    obstacle_sectors_pub_;
+  // ================================================
 
   // Dynamic parameters handler
   std::mutex mutex_;
