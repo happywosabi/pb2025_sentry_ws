@@ -133,7 +133,7 @@ def generate_launch_description():
     declare_map_yaml_cmd = DeclareLaunchArgument(
         "map",
         default_value=[
-            TextSubstitution(text=os.path.join(bringup_dir, "map", "")),
+            TextSubstitution(text=os.path.join(navigation_bringup_dir, "map", "simulation", "")),
             world,
             TextSubstitution(text=".yaml"),
         ],
@@ -143,7 +143,7 @@ def generate_launch_description():
     declare_prior_pcd_file_cmd = DeclareLaunchArgument(
         "prior_pcd_file",
         default_value=[
-            TextSubstitution(text=os.path.join(bringup_dir, "pcd", "")),
+            TextSubstitution(text=os.path.join(navigation_bringup_dir, "pcd", "simulation", "")),
             world,
             TextSubstitution(text=".pcd"),
         ],
@@ -264,6 +264,7 @@ def generate_launch_description():
             "use_rviz": "False",
             "use_composition": use_composition,
             "use_respawn": use_respawn,
+            "log_level": log_level,
         }.items(),
     )
 

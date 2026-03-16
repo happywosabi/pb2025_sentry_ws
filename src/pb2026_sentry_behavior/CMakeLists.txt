@@ -24,7 +24,10 @@ ament_auto_find_build_dependencies()
 ## Build ##
 ###########
 
+find_package(fmt REQUIRED)
+
 ament_auto_add_executable(pb2026_sentry_behavior_server src/pb2026_sentry_behavior_server.cpp)
+target_link_libraries(pb2026_sentry_behavior_server fmt)
 
 ament_auto_add_library(action_client SHARED
   src/pb2026_sentry_behavior_client.cpp
