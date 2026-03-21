@@ -37,6 +37,9 @@ endif()
 
 target_link_libraries(io MvCameraControl MVSDK usb-1.0 yaml-cpp serial)
 
+# 使用 RPATH 而非 RUNPATH，使 SDK 内部 dlopen 能找到 transport layer (libMvUsb3vTL.so)
+target_link_options(io PUBLIC "LINKER:--disable-new-dtags")
+
 ################## 检查 ROS 环境 ##################
 find_package(ament_cmake QUIET)
 find_package(rclcpp QUIET)

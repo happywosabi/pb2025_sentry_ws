@@ -1,15 +1,21 @@
-pattern_cols: 10
-pattern_rows: 7
-center_distance_mm: 40
+pattern_cols: 11
+pattern_rows: 8
+center_distance_mm: 15
 
-R_gimbal2imubody: [1, 0, 0, 0, 1, 0,  0, 0, 1]
+R_gimbal2imubody: [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
+#####-----相机内参（从标定结果或sentry.yaml复制）-----#####
+camera_matrix: [2391.9754203316666, 0, 805.47314519730128, 0, 2397.4515446944883, 637.60870693382958, 0, 0, 1]
+distort_coeffs: [-0.0067938769855980944, -0.21041880690514908, 0.0095386505420377611, 0.0098308089316364727, 0]
+
+
+#####-----相机参数-----#####
 camera_name: "hikrobot"
-exposure_ms: 3
-gain: 10.0
+exposure_ms: 30
+gain: 19.0
 vid_pid: "2bdf:0001"
 
-#####-----cboard参数-----#####
+#####-----cboard参数（capture_no_can模式不需要）-----#####
 quaternion_canid: 0x01
 bullet_speed_canid: 0x110
 send_canid: 0xff

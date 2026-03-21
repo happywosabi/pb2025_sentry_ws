@@ -100,8 +100,13 @@ add_executable(calibrate_camera calibration/calibrate_camera.cpp)
 add_executable(calibrate_handeye calibration/calibrate_handeye.cpp)
 add_executable(calibrate_robotworld_handeye calibration/calibrate_robotworld_handeye.cpp)
 add_executable(split_video calibration/split_video.cpp)
+add_executable(capture_no_can calibration/capture_no_can.cpp)
+add_executable(capture_ros2 calibration/capture_ros2.cpp)
 
 target_link_libraries(capture ${OpenCV_LIBS} fmt::fmt tools io)
+target_link_libraries(capture_no_can ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
+target_link_libraries(capture_ros2 ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io)
+ament_target_dependencies(capture_ros2 rclcpp sensor_msgs)
 target_link_libraries(calibrate_camera ${OpenCV_LIBS} fmt::fmt yaml-cpp tools)
 target_link_libraries(calibrate_handeye ${OpenCV_LIBS} fmt::fmt yaml-cpp tools)
 target_link_libraries(calibrate_robotworld_handeye ${OpenCV_LIBS} fmt::fmt yaml-cpp tools)
@@ -185,7 +190,7 @@ install(TARGETS sentry_ros2
 install(TARGETS
   standard mt_standard standard_mpc auto_aim_debug_mpc mt_auto_aim_debug
   auto_buff_debug auto_buff_debug_mpc uav uav_debug
-  capture calibrate_camera calibrate_handeye calibrate_robotworld_handeye split_video
+  capture capture_no_can capture_ros2 calibrate_camera calibrate_handeye calibrate_robotworld_handeye split_video
   auto_aim_test auto_buff_test camera_detect_test camera_test camera_thread_test
   cboard_test fire_test detector_video_test gimbal_response_test multi_usbcamera_test
   usbcamera_detect_test usbcamera_test handeye_test dm_test minimum_vision_system
