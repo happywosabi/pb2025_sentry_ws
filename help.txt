@@ -36,6 +36,8 @@ ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py
 # 终端 2：启动 sp_vision_25
 ros2 launch sp_vision_25 sp_vision_25.launch.py use_sim_time:=False
 
+ros2 launch sp_vision_25 sp_vision_25.launch.py use_sim_time:=False
+
 
 
 
