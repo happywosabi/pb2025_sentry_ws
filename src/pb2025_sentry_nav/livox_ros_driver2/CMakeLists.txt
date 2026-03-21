@@ -135,12 +135,6 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-# Install Python scripts
-install(PROGRAMS
-  scripts/custom_to_pointcloud2.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 ament_auto_package(INSTALL_TO_SHARE
   config
   launch

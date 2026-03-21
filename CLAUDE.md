@@ -96,9 +96,17 @@ ros2 launch pb2025_sentry_bringup bringup.launch.py \
 ros2 launch pb2025_sentry_bringup bringup.launch.py \
   world:=<YOUR_WORLD_NAME> \
   use_sp_vision:=True \
+  sp_vision_config:=sentry.yaml \
   use_rviz:=True \
   params_file:=<ABSOLUTE_PATH_TO_PARAMS>
 ```
+
+**Available sp_vision configuration files:**
+- `sentry.yaml` (default): Sentry robot configuration
+- `standard3.yaml`: Standard robot (hero/infantry) configuration
+- `standard4.yaml`: Alternative standard configuration
+- `uav.yaml`: UAV configuration
+- Custom path: `/absolute/path/to/custom.yaml`
 
 **Note**: When `use_sp_vision:=True`, the hik_camera_ros2_driver will NOT start because sp_vision_25 directly accesses the camera hardware (exclusive access).
 
@@ -107,6 +115,7 @@ Default parameters file: `./src/pb2025_sentry_bringup/params/node_params.yaml`
 Important launch arguments:
 - `world`: Map/PCD file basename (without extension)
 - `use_sp_vision`: Use sp_vision_25 (True) or original pb2025_rm_vision (False, default)
+- `sp_vision_config`: Config file for sp_vision_25 (default: `sentry.yaml`)
 - `use_sim_time`: Set to `True` when playing rosbags or in simulation
 - `use_composition`: Use composable nodes for better performance (default: True)
 - `use_robot_state_pub`: Publish TF from joint_state (needed for rosbag playback)
@@ -198,6 +207,29 @@ Key parameter groups:
 Maps and point clouds must share the same basename as the `world` parameter:
 - Maps: `src/pb2025_sentry_bringup/map/<world>.yaml` and `<world>.pgm`
 - Point clouds: `src/pb2025_sentry_bringup/pcd/<world>.pcd`
+
+### sp_vision_25 Configuration
+
+sp_vision_25 uses a standalone YAML configuration format (not ROS2 parameter format):
+- **Location**: `src/sp_vision_25/configs/sentry.yaml`
+- **Format**: Custom YAML with camera, YOLO, tracker, aimer, shooter configuration sections
+- **Customization methods**:
+  1. Directly modify config files in sp_vision_25 package
+  2. Create custom config file and pass absolute path via `sp_vision_config` parameter
+  3. Copy to bringup/configs/ directory for centralized management
+
+**Key parameters:**
+- `enemy_color`: Enemy color ("red" or "blue")
+- `device`: Inference device ("CPU" or "GPU", OpenVINO)
+- `yolo_name`: YOLO model version ("yolov5", "yolov8", or "yolo11")
+- `exposure_ms`, `gain`: Camera exposure and gain
+- `yaw_offset`, `pitch_offset`: Gimbal calibration offsets (degrees)
+- `debug.enable_visualization`: Publish debug images to `/sentry_debug/image`
+
+**Dual configuration system:**
+- **ROS2 parameters** (`node_params.yaml`): Used for pb2025_rm_vision, navigation, behavior tree, serial communication
+- **sp_vision YAML** (`sentry.yaml`): Only used for sp_vision_25
+- **Reason**: sp_vision_25 is an independent high-performance system using its own config format for modularity and backward compatibility
 
 ## Special Dependencies
 

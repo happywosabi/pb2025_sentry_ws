@@ -42,7 +42,11 @@ ros2 launch sp_vision_25 sp_vision_25.launch.py use_sim_time:=False
 
 
 
-
+ros2 launch pb2025_sentry_bringup bringup.launch.py \                                                                                                                                                                                                                                                               │
+│   world:=<YOUR_WORLD_NAME> \                                                                                                                                                                                                                                                                                        │
+│   use_sp_vision:=True \                                                                                                                                                                                                                                                                                             │
+│   sp_vision_config:=sentry.yaml \  # 可选：指定配置文件                                                                                                                                                                                                                                                             │
+│   use_rviz:=True
 
 
 

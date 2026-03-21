@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4">
+
+  <!-- ==================== 检查比赛是否开始 ==================== -->
+  <BehaviorTree ID="check_game_start">
+    <Fallback>
+      <IsGameStatus name="IsGameStart"
+                    max_remain_time="300"
+                    min_remain_time="0"
+                    expected_game_progress="4"
+                    key_port="{@referee_gameStatus}"/>
+
+      <ForceFailure>
+        <Sequence>
+          <PublishSpinSpeed spin_speed="0.0"
+                            duration="0.0"
+                            topic_name="cmd_spin"/>
+          <PublishTwist v_x="0.0"
+                        v_y="0.0"
+                        v_yaw="0.0"
+                        duration="0.0"
+                        topic_name="cmd_vel"/>
+        </Sequence>
+      </ForceFailure>
+    </Fallback>
+  </BehaviorTree>
+
+  <!-- ==================== 检查哨兵状态 ==================== -->
+  <BehaviorTree ID="check_robot_status">
+    <Fallback>
+      <IsStatusOK ammo_min="0"
+                  hp_min="200"
+                  heat_max="200"
+                  key_port="{@referee_robotStatus}"/>
+
+      <ForceFailure>
+        <Fallback>
+          <IsRfidDetected friendly_supply_zone_exchange="false"
+                          friendly_supply_zone_non_exchange="true"
+                          center_gain_point="false"
+                          friendly_fortress_gain_point="false"
+                          key_port="{@referee_rfidStatus}"/>
+
+          <PubNav2Goal goal="1.47;0.59;0"
+                       topic_name="goal_pose"/>
+        </Fallback>
+      </ForceFailure>
+    </Fallback>
+  </BehaviorTree>
+
+
+  <BehaviorTree ID="rmul_2026">
+    <KeepRunningUntilFailure>
+      <ForceSuccess>
+        <ReactiveSequence>
+
+          <!-- 1. 检查比赛是否开始 -->
+          <SubTree ID="check_game_start"/>
+
+          <!-- 2. 一直旋转 -->
+          <PublishSpinSpeed spin_speed="8.0"
+                            duration="0.0"
+                            topic_name="cmd_spin"/>
+
+          <!-- 3. 检查状态（血少/过热就回补给区） -->
+          <SubTree ID="check_robot_status"/>
+
+          <!-- 4. 状态OK → 去控制区 【需确认坐标】 -->
+          <PubNav2Goal goal="0.08;-0.15;0"
+                       topic_name="goal_pose"/>
+
+        </ReactiveSequence>
+      </ForceSuccess>
+    </KeepRunningUntilFailure>
+  </BehaviorTree>
+
+
+  <TreeNodesModel>
+    <Condition ID="IsGameStatus">
+      <input_port name="max_remain_time" default="300" type="int">Maximum remaining time (s)</input_port>
+      <input_port name="min_remain_time" default="0" type="int">Minimum remaining time (s)</input_port>
+      <input_port name="expected_game_progress" default="4" type="int">Expected game progress stage</input_port>
+      <input_port name="key_port" default="{@referee_gameStatus}"/>
+    </Condition>
+
+    <Condition ID="IsRfidDetected">
+      <input_port name="friendly_supply_zone_exchange" default="false" type="bool">己方与兑换区重叠的补给区</input_port>
+      <input_port name="friendly_supply_zone_non_exchange" default="false" type="bool">己方与兑换区不重叠的补给区 / RMUL 补给区</input_port>
+      <input_port name="center_gain_point" default="false" type="bool">中心增益点（仅 RMUL 适用）</input_port>
+      <input_port name="friendly_fortress_gain_point" default="false" type="bool">己方堡垒增益点</input_port>
+      <input_port name="key_port" default="{@referee_rfidStatus}"/>
+    </Condition>
+
+    <Condition ID="IsStatusOK">
+      <input_port name="ammo_min" default="0" type="int">Lower than minimum ammo will return FAILURE. Set 0 = disabled (sentry cannot refill ammo mid-game)</input_port>
+      <input_port name="hp_min" default="200" type="int">Minimum HP. Sentry max HP = 400. Return FAILURE when HP drops below this.</input_port>
+      <input_port name="heat_max" default="200" type="int">Maximum heat threshold. Sentry heat limit = 260. Return FAILURE when heat exceeds this.</input_port>
+      <input_port name="key_port" default="{@referee_robotStatus}"/>
+    </Condition>
+
+    <Condition ID="PubNav2Goal">
+      <input_port name="goal" default="0;0;0">Expected goal pose. Format: x;y;yaw</input_port>
+      <input_port name="topic_name" default="__default__placeholder__"/>
+    </Condition>
+
+    <Action ID="PublishSpinSpeed">
+      <input_port name="spin_speed" default="0.0" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="duration" type="std::chrono::milliseconds">Publish then sleep duration in milliseconds</input_port>
+      <input_port name="topic_name" default="__default__placeholder__"/>
+    </Action>
+
+    <Action ID="PublishTwist">
+      <input_port name="v_x" default="0.0" type="double">Linear X velocity (m/s)</input_port>
+      <input_port name="v_y" default="0.0" type="double">Linear Y velocity (m/s)</input_port>
+      <input_port name="v_yaw" default="0.0" type="double">Angular Z velocity (rad/s)</input_port>
+      <input_port name="duration" type="std::chrono::milliseconds">Publish then sleep duration in milliseconds</input_port>
+      <input_port name="topic_name" default="__default__placeholder__"/>
+    </Action>
+  </TreeNodesModel>
+
+</root>

@@ -39,6 +39,15 @@ def generate_launch_description():
     navigation_bringup_dir = get_package_share_directory("pb2025_nav_bringup")
     bt_bringup_dir = get_package_share_directory("pb2025_sentry_behavior")
 
+    # 计算sp_vision配置文件路径：
+    # - 如果是绝对路径，直接使用
+    # - 如果是文件名，则从sp_vision_25/configs/目录加载
+    sp_vision_config = LaunchConfiguration("sp_vision_config")
+    sp_vision_config_path = PythonExpression([
+        "'", sp_vision_config, "' if '", sp_vision_config, "'.startswith('/') else '",
+        os.path.join(sp_vision_pkg, "configs", ""), sp_vision_config, "'"
+    ])
+
     # Create the launch configuration variables
     ## Serial
     robot_name = LaunchConfiguration("robot_name")
@@ -90,6 +99,13 @@ def generate_launch_description():
         description="Use sp_vision_25 (True) or original pb2025_rm_vision (False)",
     )
 
+    declare_sp_vision_config_cmd = DeclareLaunchArgument(
+        "sp_vision_config",
+        default_value="sentry.yaml",
+        description="Config file name for sp_vision_25 (e.g., 'sentry.yaml', 'standard3.yaml', 'uav.yaml'). "
+                    "Can also be an absolute path to custom config file."
+    )
+
     declare_detector_cmd = DeclareLaunchArgument(
         "detector",
         default_value="opencv",
@@ -117,7 +133,7 @@ def generate_launch_description():
     declare_map_yaml_cmd = DeclareLaunchArgument(
         "map",
         default_value=[
-            TextSubstitution(text=os.path.join(bringup_dir, "map", "")),
+            TextSubstitution(text=os.path.join(navigation_bringup_dir, "map", "simulation", "")),
             world,
             TextSubstitution(text=".yaml"),
         ],
@@ -127,7 +143,7 @@ def generate_launch_description():
     declare_prior_pcd_file_cmd = DeclareLaunchArgument(
         "prior_pcd_file",
         default_value=[
-            TextSubstitution(text=os.path.join(bringup_dir, "pcd", "")),
+            TextSubstitution(text=os.path.join(navigation_bringup_dir, "pcd", "simulation", "")),
             world,
             TextSubstitution(text=".pcd"),
         ],
@@ -226,6 +242,8 @@ def generate_launch_description():
         condition=IfCondition(use_sp_vision),  # 仅在使用sp_vision时启动
         launch_arguments={
             "use_sim_time": use_sim_time,
+            "use_rviz": "False",  # sp_vision不单独启动RViz，由主launch统一管理
+            "config_path": sp_vision_config_path,  # 传递配置文件路径
         }.items(),
     )
 
@@ -246,6 +264,7 @@ def generate_launch_description():
             "use_rviz": "False",
             "use_composition": use_composition,
             "use_respawn": use_respawn,
+            "log_level": log_level,
         }.items(),
     )
 
@@ -294,6 +313,7 @@ def generate_launch_description():
     # Declare the launch options
     ld.add_action(declare_robot_name_cmd)
     ld.add_action(declare_use_sp_vision_cmd)
+    ld.add_action(declare_sp_vision_config_cmd)
     ld.add_action(declare_detector_cmd)
     ld.add_action(declare_use_hik_camera_cmd)
     ld.add_action(declare_slam_cmd)
