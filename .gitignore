@@ -19,6 +19,8 @@ __pycache__
 /*.gv
 /*.pdf
 
+
+sentry.yaml
 symlink
 script/*.sh
 sentry_*/

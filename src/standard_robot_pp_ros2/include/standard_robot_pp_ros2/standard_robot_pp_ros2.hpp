@@ -1,4 +1,4 @@
-
+// Copyright 2025 SMBU-PolarBear-Robotics-Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,11 +15,13 @@
 #ifndef STANDARD_ROBOT_PP_ROS2__STANDARD_ROBOT_PP_ROS2_HPP_
 #define STANDARD_ROBOT_PP_ROS2__STANDARD_ROBOT_PP_ROS2_HPP_
 
+#include <auto_aim_interfaces/msg/detail/shoot_info__struct.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "auto_aim_interfaces/msg/shoot_info.hpp"
 #include "auto_aim_interfaces/msg/target.hpp"
 #include "example_interfaces/msg/float64.hpp"
 #include "example_interfaces/msg/u_int8.hpp"
@@ -32,8 +34,8 @@
 #include "pb_rm_interfaces/msg/rfid_status.hpp"
 #include "pb_rm_interfaces/msg/robot_state_info.hpp"
 #include "pb_rm_interfaces/msg/robot_status.hpp"
-#include "pb_rm_interfaces/msg/sentry_cmd.hpp"   // add
-#include "pb_rm_interfaces/msg/sentry_info.hpp"  // add
+#include "pb_rm_interfaces/msg/sentry_cmd.hpp"
+#include "pb_rm_interfaces/msg/warning.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -77,21 +79,21 @@ private:
   rclcpp::Publisher<pb_rm_interfaces::msg::RobotStatus>::SharedPtr robot_status_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<pb_rm_interfaces::msg::Buff>::SharedPtr buff_pub_;
-  rclcpp::Publisher<pb_rm_interfaces::msg::SentryInfo>::SharedPtr sentry_info_pub_;  // add
-
+  rclcpp::Publisher<pb_rm_interfaces::msg::Warning>::SharedPtr warning_pub_;
+  rclcpp::Publisher<auto_aim_interfaces::msg::ShootInfo>::SharedPtr shot_info_pub_;
   // Subscribe
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr cmd_gimbal_joint_sub_;
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_shoot_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr cmd_tracking_sub_;
-  rclcpp::Subscription<pb_rm_interfaces::msg::SentryCmd>::SharedPtr sentry_cmd_sub_;  // add
+  rclcpp::Subscription<pb_rm_interfaces::msg::SentryCmd>::SharedPtr sentry_cmd_sub_;
 
   RobotModels robot_models_;
   std::unordered_map<std::string, rclcpp::Publisher<example_interfaces::msg::Float64>::SharedPtr>
     debug_pub_map_;
 
   SendRobotCmdData send_robot_cmd_data_;
-  SendSentryCmdData send_sentry_cmd_data_;  // add
+  SendSentryCmdData send_sentry_cmd_data_;
 
   void getParams();
   void createPublisher();
@@ -104,22 +106,44 @@ private:
   void publishDebugData(ReceiveDebugData & data);
   void publishImuData(ReceiveImuData & data);
   void publishRobotInfo(ReceiveRobotInfoData & data);
-  void publishEventData(ReceiveEventData & data);
-  void publishAllRobotHp(ReceiveAllRobotHpData & data);
   void publishGameStatus(ReceiveGameStatusData & data);
+  void publishGameResult(ReceiveGameResultData & data);
+  void publishAllRobotHp(ReceiveAllRobotHpData & data);
+  void publishEventData(ReceiveEventData & data);
+  void publishRefereeWarning(ReceiveRefereeWarningData & data);
+  // void publishDartInfo(ReceiveDartInfoData & data);
+  void publishRobotStatus(ReceiveRobotStatusData & data) ;
+  void publishPowerHeat(ReceivePowerHeatData & data);
+  void publishBuff(ReceiveBuffData & data);
+  void publishShootData (ReceiveShootData & data);
+  void publishRfidStatus(ReceiveRfidStatusData & data);
+  // void publishDartClientCmd(ReceiveDartClientCmdData & data);
+  void publishGroundRobotPosition(ReceiveGroundRobotPositionData & data);
+  void publishRadarMark(ReceiveRadarMarkDataData & data);
+  void publishSentryInfo(ReceiveSentryInfoData & data);
+  void publishRadarInfo(ReceiveRadarInfoData & data);
+  void publishRobotInteraction(ReceiveRobotInteractionData & data);
+  void publishCustomController(ReceiveCustomControllerData & data);
+  void publishMapComman(ReceiveMapCommandData & data);
+  void publishRobotCustom(ReceiveRobotCustomDataData & data);
+  void publishRobotCUstom3(ReceiveRobotCustomData3Data & data);
+  void publishPidDebug(ReceivePidDebugData & data);
+  void publishJointState(ReceiveJointStateData & data);
   void publishRobotMotion(ReceiveRobotMotionData & data);
-  void publishGroundRobotPosition(ReceiveGroundRobotPosition & data);
-  void publishRfidStatus(ReceiveRfidStatus & data);
-  void publishRobotStatus(ReceiveRobotStatus & data);
-  void publishJointState(ReceiveJointState & data);
-  void publishBuff(ReceiveBuff & data);
-  void publishSentryInfo(ReceiveSentryInfo & data);  // add
+
+  // void publishRobotMotion(ReceiveRobotMotionData & data);
+  // void publishGroundRobotPosition(ReceiveGroundRobotPosition & data);
+  // void publishRfidStatus(ReceiveRfidStatus & data);
+  // void publishRobotStatus(ReceiveRobotStatus & data);
+  // void publishJointState(ReceiveJointState & data);
+  // void publishBuff(ReceiveBuff & data);
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void cmdGimbalJointCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
   void cmdShootCallback(const example_interfaces::msg::UInt8::SharedPtr msg);
   void visionTargetCallback(const auto_aim_interfaces::msg::Target::SharedPtr msg);
   void sentryCmdCallback(const pb_rm_interfaces::msg::SentryCmd::SharedPtr msg);
+
   void setParam(const rclcpp::Parameter & param);
   bool getDetectColor(uint8_t robot_id, uint8_t & color);
   bool callTriggerService(const std::string & service_name);
@@ -136,6 +160,7 @@ private:
 
   float last_hp_;
   float last_gimbal_pitch_odom_joint_, last_gimbal_yaw_odom_joint_;
+  uint16_t current_shooter_heat_ = 0;  // Store current heat from PowerHeatData packet
 };
 }  // namespace standard_robot_pp_ros2
 

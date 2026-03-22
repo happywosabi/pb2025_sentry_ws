@@ -1,4 +1,4 @@
-
+// Copyright 2025 SMBU-PolarBear-Robotics-Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #include "standard_robot_pp_ros2/standard_robot_pp_ros2.hpp"
 
 #include <memory>
+#include <pb_rm_interfaces/msg/detail/warning__struct.hpp>
 
 #include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
@@ -23,7 +24,7 @@
 
 #define USB_NOT_OK_SLEEP_TIME 1000   // (ms)
 #define USB_PROTECT_SLEEP_TIME 1000  // (ms)
-
+#define EXTRACT_BITS(num, start, count) ((num & (((1U << count) - 1) << start)) >> start)
 using namespace std::chrono_literals;
 
 namespace standard_robot_pp_ros2
@@ -96,8 +97,8 @@ void StandardRobotPpRos2Node::createPublisher()
   robot_status_pub_ =
     this->create_publisher<pb_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
   buff_pub_ = this->create_publisher<pb_rm_interfaces::msg::Buff>("referee/buff", 10);
-  sentry_info_pub_ =
-    this->create_publisher<pb_rm_interfaces::msg::SentryInfo>("referee/sentry_info", 10);
+  warning_pub_ = this->create_publisher<pb_rm_interfaces::msg::Warning>("referee/warning", 10);
+  shot_info_pub_ = this->create_publisher<auto_aim_interfaces::msg::ShootInfo>("autoaim/shoot", 10);
 }
 
 void StandardRobotPpRos2Node::createNewDebugPublisher(const std::string & name)
@@ -357,50 +358,61 @@ void StandardRobotPpRos2Node::receiveData()
           ReceiveRobotInfoData robot_info_data = fromVector<ReceiveRobotInfoData>(data_buf);
           publishRobotInfo(robot_info_data);
         } break;
-        case ID_EVENT_DATA: {
-          ReceiveEventData event_data = fromVector<ReceiveEventData>(data_buf);
-          publishEventData(event_data);
-        } break;
-        case ID_PID_DEBUG: {
-          RCLCPP_WARN(get_logger(), "Not implemented yet!");
-        } break;
-        case ID_ALL_ROBOT_HP: {
-          ReceiveAllRobotHpData all_robot_hp_data = fromVector<ReceiveAllRobotHpData>(data_buf);
-          publishAllRobotHp(all_robot_hp_data);
-        } break;
         case ID_GAME_STATUS: {
           ReceiveGameStatusData game_status_data = fromVector<ReceiveGameStatusData>(data_buf);
           publishGameStatus(game_status_data);
         } break;
-        case ID_ROBOT_MOTION: {
+        case ID_GAME_ALL_ROBOT_HP: {
+          ReceiveAllRobotHpData all_robot_hp_data = fromVector<ReceiveAllRobotHpData>(data_buf);
+          publishAllRobotHp(all_robot_hp_data);
+        } break;
+        case ID_EVENT_DATA: {
+          ReceiveEventData event_data = fromVector<ReceiveEventData>(data_buf);
+          publishEventData(event_data);
+        } break;
+        case ID_REFEREE_WARNING: {
+          ReceiveRefereeWarningData warning_data = fromVector<ReceiveRefereeWarningData>(data_buf);
+          publishRefereeWarning(warning_data);
+          break;
+        }
+        case ID_ROBOT_STATUS :{
+          ReceiveRobotStatusData robot_status_data = fromVector<ReceiveRobotStatusData>(data_buf);
+          publishRobotStatus(robot_status_data);
+        } break;
+        case ID_BUFF: {
+          ReceiveBuffData buff = fromVector<ReceiveBuffData>(data_buf);
+          publishBuff(buff);
+          break;
+        }
+        case ID_SHOOT : {
+          ReceiveShootData shoot = fromVector<ReceiveShootData>(data_buf);
+          publishShootData(shoot);
+          break;
+        }
+        case ID_RFID_STATUS: {
+          ReceiveRfidStatusData rfid_status_data = fromVector<ReceiveRfidStatusData>(data_buf);
+          publishRfidStatus(rfid_status_data);
+        } break;
+        case ID_GROUND_ROBOT_POSITION: {
+          ReceiveGroundRobotPositionData ground_robot_position_data = fromVector<ReceiveGroundRobotPositionData>(data_buf);
+          publishGroundRobotPosition(ground_robot_position_data);
+        } break;
+        case ID_JOINT_STATE: {
+          ReceiveJointStateData joint_state_data = fromVector<ReceiveJointStateData>(data_buf);
+          publishJointState(joint_state_data);
+        } break;
+        case ID_ROBOT_MOTION_DATA: {
           ReceiveRobotMotionData robot_motion_data = fromVector<ReceiveRobotMotionData>(data_buf);
           publishRobotMotion(robot_motion_data);
         } break;
-        case ID_GROUND_ROBOT_POSITION: {
-          ReceiveGroundRobotPosition ground_robot_position_data =
-            fromVector<ReceiveGroundRobotPosition>(data_buf);
-          publishGroundRobotPosition(ground_robot_position_data);
+        case ID_POWER_HEAT_DATA: {
+          ReceivePowerHeatData power_heat_data = fromVector<ReceivePowerHeatData>(data_buf);
+          publishPowerHeat(power_heat_data);
         } break;
-        case ID_RFID_STATUS: {
-          ReceiveRfidStatus rfid_status_data = fromVector<ReceiveRfidStatus>(data_buf);
-          publishRfidStatus(rfid_status_data);
-        } break;
-        case ID_ROBOT_STATUS: {
-          ReceiveRobotStatus robot_status_data = fromVector<ReceiveRobotStatus>(data_buf);
-          publishRobotStatus(robot_status_data);
-        } break;
-        case ID_JOINT_STATE: {
-          ReceiveJointState joint_state_data = fromVector<ReceiveJointState>(data_buf);
-          publishJointState(joint_state_data);
-        } break;
-        case ID_BUFF: {
-          ReceiveBuff buff = fromVector<ReceiveBuff>(data_buf);
-          publishBuff(buff);
-        } break;
-        case ID_SENTRY_INFO: {
-          ReceiveSentryInfo sentry_info = fromVector<ReceiveSentryInfo>(data_buf);
-          publishSentryInfo(sentry_info);
-        } break;
+        // case ID_PID_DEBUG: {
+        //   RCLCPP_WARN(get_logger(), "Not implemented yet!");
+        // } break;
+        //0x06
         default: {
           RCLCPP_WARN(get_logger(), "Invalid id: %d", header_frame.id);
         } break;
@@ -496,33 +508,46 @@ void StandardRobotPpRos2Node::publishEventData(ReceiveEventData & event_data)
 {
   pb_rm_interfaces::msg::EventData msg;
 
-  msg.non_overlapping_supply_zone = event_data.data.non_overlapping_supply_zone;
-  msg.overlapping_supply_zone = event_data.data.overlapping_supply_zone;
-  msg.supply_zone = event_data.data.supply_zone;
+  msg.non_overlapping_supply_zone = (uint8_t)((event_data.data.event_data & (1U << 0)) >> 0);
+  msg.overlapping_supply_zone = (uint8_t)((event_data.data.event_data & (1U << 1)) >> 1);
+  msg.supply_zone = (uint8_t)((event_data.data.event_data & (1U << 2)) >> 2);;
 
-  msg.small_energy = event_data.data.small_energy;
-  msg.big_energy = event_data.data.big_energy;
+  msg.small_energy = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 3, 2);
+  msg.big_energy = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 5, 2);
 
-  msg.central_highland = event_data.data.central_highland;
-  msg.trapezoidal_highland = event_data.data.trapezoidal_highland;
+  msg.central_highland = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 7, 2);
+  msg.trapezoidal_highland = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 9, 2);
+  msg.enemy_dart_last_hit_time = (uint16_t)EXTRACT_BITS(event_data.data.event_data, 11, 9);
+  msg.enemy_dart_last_hit_target = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 20, 3);
 
-  msg.center_gain_zone = event_data.data.center_gain_zone;
-
+  msg.center_gain_zone = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 23, 2);
+  msg.friend_fort_buff = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 25, 2);
+  msg.friend_outpost_buff = (uint8_t)EXTRACT_BITS(event_data.data.event_data, 27, 2);
+  msg.friend_base_buff = (uint8_t)((event_data.data.event_data & (1U << 29)) >> 29);;
   event_data_pub_->publish(msg);
 }
 
-//add
+void StandardRobotPpRos2Node::publishRefereeWarning(ReceiveRefereeWarningData & referee_warning)
+{
+  pb_rm_interfaces::msg::Warning msg;
+  msg.level = referee_warning.data.level;
+  msg.offending_robot_id = referee_warning.data.offending_robot_id;
+  msg.count = referee_warning.data.count;
+
+  warning_pub_->publish(msg);
+}
+
 void StandardRobotPpRos2Node::publishAllRobotHp(ReceiveAllRobotHpData & all_robot_hp)
 {
   pb_rm_interfaces::msg::GameRobotHP msg;
-
-  msg.ally_1_robot_hp = all_robot_hp.data.ally_1_robot_HP;
-  msg.ally_2_robot_hp = all_robot_hp.data.ally_2_robot_HP;
-  msg.ally_3_robot_hp = all_robot_hp.data.ally_3_robot_HP;
-  msg.ally_4_robot_hp = all_robot_hp.data.ally_4_robot_HP;
-  msg.ally_7_robot_hp = all_robot_hp.data.ally_7_robot_HP;
-  msg.ally_outpost_hp = all_robot_hp.data.ally_outpost_HP;
-  msg.ally_base_hp = all_robot_hp.data.ally_base_HP;
+  
+  msg.alley_1_robot_hp = all_robot_hp.data.ally_1_robot_HP;
+  msg.alley_2_robot_hp = all_robot_hp.data.ally_2_robot_HP;
+  msg.alley_3_robot_hp = all_robot_hp.data.ally_3_robot_HP;
+  msg.alley_4_robot_hp = all_robot_hp.data.ally_4_robot_HP;
+  msg.alley_7_robot_hp = all_robot_hp.data.ally_7_robot_HP;
+  msg.alley_outpost_hp = all_robot_hp.data.ally_outpost_HP;
+  msg.alley_base_hp = all_robot_hp.data.ally_base_HP;
 
   all_robot_hp_pub_->publish(msg);
 }
@@ -530,6 +555,8 @@ void StandardRobotPpRos2Node::publishAllRobotHp(ReceiveAllRobotHpData & all_robo
 void StandardRobotPpRos2Node::publishGameStatus(ReceiveGameStatusData & game_status)
 {
   pb_rm_interfaces::msg::GameStatus msg;
+
+  msg.game_type = game_status.data.game_type;
   msg.game_progress = game_status.data.game_progress;
   msg.stage_remain_time = game_status.data.stage_remain_time;
   game_status_pub_->publish(msg);
@@ -559,7 +586,7 @@ void StandardRobotPpRos2Node::publishGameStatus(ReceiveGameStatusData & game_sta
 void StandardRobotPpRos2Node::publishRobotMotion(ReceiveRobotMotionData & robot_motion)
 {
   geometry_msgs::msg::Twist msg;
-
+  
   msg.linear.x = robot_motion.data.speed_vector.vx;
   msg.linear.y = robot_motion.data.speed_vector.vy;
   msg.angular.z = robot_motion.data.speed_vector.wz;
@@ -568,87 +595,110 @@ void StandardRobotPpRos2Node::publishRobotMotion(ReceiveRobotMotionData & robot_
 }
 
 void StandardRobotPpRos2Node::publishGroundRobotPosition(
-  ReceiveGroundRobotPosition & ground_robot_position)
+  ReceiveGroundRobotPositionData & ground_robot_position)
 {
   pb_rm_interfaces::msg::GroundRobotPosition msg;
 
-  msg.hero_position_x = ground_robot_position.data.hero_x;
-  msg.hero_position_y = ground_robot_position.data.hero_y;
+  msg.hero_position.x = ground_robot_position.data.hero_x;
+  msg.hero_position.y = ground_robot_position.data.hero_y;
 
-  msg.engineer_position_x = ground_robot_position.data.engineer_x;
-  msg.engineer_position_y = ground_robot_position.data.engineer_y;
+  msg.engineer_position.x = ground_robot_position.data.engineer_x;
+  msg.engineer_position.y = ground_robot_position.data.engineer_y;
 
-  msg.standard_3_position_x = ground_robot_position.data.standard_3_x;
-  msg.standard_3_position_y = ground_robot_position.data.standard_3_y;
+  msg.standard_3_position.x = ground_robot_position.data.standard_3_x;
+  msg.standard_3_position.y = ground_robot_position.data.standard_3_y;
 
-  msg.standard_4_position_x = ground_robot_position.data.standard_4_x;
-  msg.standard_4_position_y = ground_robot_position.data.standard_4_y;
+  msg.standard_4_position.x = ground_robot_position.data.standard_4_x;
+  msg.standard_4_position.y = ground_robot_position.data.standard_4_y;
 
   ground_robot_position_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishRfidStatus(ReceiveRfidStatus & rfid_status)
+void StandardRobotPpRos2Node::publishRfidStatus(ReceiveRfidStatusData & rfid_status)
 {
   pb_rm_interfaces::msg::RfidStatus msg;
 
-  msg.base_gain_point = rfid_status.data.base_gain_point;
-  msg.central_highland_gain_point = rfid_status.data.central_highland_gain_point;
-  msg.enemy_central_highland_gain_point = rfid_status.data.enemy_central_highland_gain_point;
-  msg.friendly_trapezoidal_highland_gain_point =
-    rfid_status.data.friendly_trapezoidal_highland_gain_point;
-  msg.enemy_trapezoidal_highland_gain_point =
-    rfid_status.data.enemy_trapezoidal_highland_gain_point;
-  msg.friendly_fly_ramp_front_gain_point = rfid_status.data.friendly_fly_ramp_front_gain_point;
-  msg.friendly_fly_ramp_back_gain_point = rfid_status.data.friendly_fly_ramp_back_gain_point;
-  msg.enemy_fly_ramp_front_gain_point = rfid_status.data.enemy_fly_ramp_front_gain_point;
-  msg.enemy_fly_ramp_back_gain_point = rfid_status.data.enemy_fly_ramp_back_gain_point;
-  msg.friendly_central_highland_lower_gain_point =
-    rfid_status.data.friendly_central_highland_lower_gain_point;
-  msg.friendly_central_highland_upper_gain_point =
-    rfid_status.data.friendly_central_highland_upper_gain_point;
-  msg.enemy_central_highland_lower_gain_point =
-    rfid_status.data.enemy_central_highland_lower_gain_point;
-  msg.enemy_central_highland_upper_gain_point =
-    rfid_status.data.enemy_central_highland_upper_gain_point;
-  msg.friendly_highway_lower_gain_point = rfid_status.data.friendly_highway_lower_gain_point;
-  msg.friendly_highway_upper_gain_point = rfid_status.data.friendly_highway_upper_gain_point;
-  msg.enemy_highway_lower_gain_point = rfid_status.data.enemy_highway_lower_gain_point;
-  msg.enemy_highway_upper_gain_point = rfid_status.data.enemy_highway_upper_gain_point;
-  msg.friendly_fortress_gain_point = rfid_status.data.friendly_fortress_gain_point;
-  msg.friendly_outpost_gain_point = rfid_status.data.friendly_outpost_gain_point;
-  msg.friendly_supply_zone_non_exchange = rfid_status.data.friendly_supply_zone_non_exchange;
-  msg.friendly_supply_zone_exchange = rfid_status.data.friendly_supply_zone_exchange;
-  msg.friendly_assembly_gain_point = rfid_status.data.friendly_assembly_gain_point;  // bit 21 己方装配增益点
-  msg.enemy_assembly_gain_point    = rfid_status.data.enemy_assembly_gain_point;     // bit 22 对方装配增益点
-  msg.center_gain_point = rfid_status.data.center_gain_point;
+  msg.own_base = (bool)((rfid_status.data.rfid_status & (1U << 0)) >> 0);
+  msg.own_central_highland = (bool)((rfid_status.data.rfid_status & (1U << 1)) >> 1);
+  msg.opponent_central_highland = (bool)((rfid_status.data.rfid_status & (1U << 2)) >> 2);
+  msg.own_trapezoidal_highland = (bool)((rfid_status.data.rfid_status & (1U << 3)) >> 3);
+  msg.opponent_trapezoidal_highland = (bool)((rfid_status.data.rfid_status & (1U << 4)) >> 4);
+  
+  msg.own_terrain_cross_ramp_front = (bool)((rfid_status.data.rfid_status & (1U << 5)) >> 5);
+  msg.own_terrain_cross_ramp_rear =  (bool)((rfid_status.data.rfid_status & (1U << 6)) >> 6);
+  msg.opponent_terrain_cross_ramp_front = (bool)((rfid_status.data.rfid_status & (1U << 7)) >> 7);
+  msg.opponent_terrain_cross_ramp_rear = (bool)((rfid_status.data.rfid_status & (1U << 8)) >> 8);
+
+  msg.own_terrain_cross_central_highland_lower = (bool)((rfid_status.data.rfid_status & (1U << 9)) >> 9);
+  msg.own_terrain_cross_central_highland_upper = (bool)((rfid_status.data.rfid_status & (1U << 10)) >> 10);
+  msg.opponent_terrain_cross_central_highland_lower = (bool)((rfid_status.data.rfid_status & (1U << 11)) >> 11);
+  msg.opponent_terrain_cross_central_highland_upper = (bool)((rfid_status.data.rfid_status & (1U << 12)) >> 12);
+  
+  msg.own_terrain_cross_highway_lower = (bool)((rfid_status.data.rfid_status & (1U << 13)) >> 13);
+  msg.own_terrain_cross_highway_upper = (bool)((rfid_status.data.rfid_status & (1U << 14)) >> 14);
+  msg.opponent_terrain_cross_highway_lower = (bool)((rfid_status.data.rfid_status & (1U << 15)) >> 15);
+  msg.opponent_terrain_cross_highway_upper = (bool)((rfid_status.data.rfid_status & (1U << 16)) >> 16);
+
+  msg.own_fortress = (bool)((rfid_status.data.rfid_status & (1U << 17)) >> 17);
+  msg.own_outpost = (bool)((rfid_status.data.rfid_status & (1U << 18)) >> 18);
+  msg.own_supply_zone_non_overlap_resource = (bool)((rfid_status.data.rfid_status & (1U << 19)) >> 19);
+  msg.own_supply_zone_overlap_resource = (bool)((rfid_status.data.rfid_status & (1U << 20)) >> 20);
+  msg.own_assembly = (bool)((rfid_status.data.rfid_status & (1U << 21)) >> 21);
+  msg.opponent_assembly = (bool)((rfid_status.data.rfid_status & (1U << 22)) >> 22);
+  msg.central_rmul_only = (bool)((rfid_status.data.rfid_status & (1U << 23)) >> 23);
+  msg.opponent_fortress = (bool)((rfid_status.data.rfid_status & (1U << 24)) >> 24);
+  msg.opponent_outpost = (bool)((rfid_status.data.rfid_status & (1U << 25)) >> 25);
+
+  // 己方隧道地形跨越增益点
+  msg.own_terrain_cross_tunnel_highway_lower = (bool)((rfid_status.data.rfid_status & (1U << 26)) >> 26);
+  msg.own_terrain_cross_tunnel_highway_middle = (bool)((rfid_status.data.rfid_status & (1U << 27)) >> 27);
+  msg.own_terrain_cross_tunnel_highway_upper = (bool)((rfid_status.data.rfid_status & (1U << 28)) >> 28);
+  msg.own_terrain_cross_tunnel_trapezoidal_low = (bool)((rfid_status.data.rfid_status & (1U << 29)) >> 29);
+  msg.own_terrain_cross_tunnel_trapezoidal_middle = (bool)((rfid_status.data.rfid_status & (1U << 30)) >> 30);
+  msg.own_terrain_cross_tunnel_trapezoidal_high = (bool)((rfid_status.data.rfid_status & (1U << 31)) >> 31);
+
+  // 对方隧道地形跨越增益点
+  msg.opponent_terrain_cross_tunnel_highway_lower = (bool)((rfid_status.data.rfid_status_2 & (1U << 0)) >> 0);
+  msg.opponent_terrain_cross_tunnel_highway_middle = (bool)((rfid_status.data.rfid_status_2 & (1U << 1)) >> 1);
+  msg.opponent_terrain_cross_tunnel_highway_upper = (bool)((rfid_status.data.rfid_status_2 & (1U << 2)) >> 2);
+  msg.opponent_terrain_cross_tunnel_trapezoidal_low = (bool)((rfid_status.data.rfid_status_2 & (1U << 3)) >> 3);
+  msg.opponent_terrain_cross_tunnel_trapezoidal_middle = (bool)((rfid_status.data.rfid_status_2 & (1U << 4)) >> 4);
+  msg.opponent_terrain_cross_tunnel_trapezoidal_high = (bool)((rfid_status.data.rfid_status_2 & (1U << 5)) >> 5);
+
 
   rfid_status_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishRobotStatus(ReceiveRobotStatus & robot_status)
+void StandardRobotPpRos2Node::publishRobotStatus(ReceiveRobotStatusData & robot_status) 
 {
   pb_rm_interfaces::msg::RobotStatus msg;
 
   msg.robot_id = robot_status.data.robot_id;
   msg.robot_level = robot_status.data.robot_level;
-  msg.current_hp = robot_status.data.current_up;
-  msg.maximum_hp = robot_status.data.maximum_hp;
+  msg.current_hp = robot_status.data.current_HP;
+  msg.maximum_hp = robot_status.data.maximum_HP;
   msg.shooter_barrel_cooling_value = robot_status.data.shooter_barrel_cooling_value;
   msg.shooter_barrel_heat_limit = robot_status.data.shooter_barrel_heat_limit;
-  msg.shooter_17mm_1_barrel_heat = robot_status.data.shooter_17mm_1_barrel_heat;
-  msg.robot_pos.position.x = robot_status.data.robot_pos_x;
-  msg.robot_pos.position.y = robot_status.data.robot_pos_y;
+  msg.shooter_17mm_1_barrel_heat = current_shooter_heat_;  // Use stored heat value from PowerHeatData
+
+  msg.robot_pos.position.x = robot_status.data.x;
+  msg.robot_pos.position.y = robot_status.data.y;
   msg.robot_pos.orientation =
-    tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), robot_status.data.robot_pos_angle));
+    tf2::toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), robot_status.data.angle));
+
+
   msg.armor_id = robot_status.data.armor_id;
-  msg.hp_deduction_reason = robot_status.data.hp_deduction_reason;
+  msg.hp_deduction_reason = robot_status.data.HP_deduction_reason;
+  
   msg.projectile_allowance_17mm = robot_status.data.projectile_allowance_17mm;
+  msg.projectile_allowance_42mm = robot_status.data.projectile_allowance_42mm;
   msg.remaining_gold_coin = robot_status.data.remaining_gold_coin;
+  msg.projectile_allowance_fortress = robot_status.data.projectile_allowance_fortress;
 
   if (last_hp_ - msg.current_hp > 0) {
     msg.is_hp_deduced = true;
   }
-  last_hp_ = robot_status.data.current_up;
+  last_hp_ = robot_status.data.current_HP;
 
   robot_status_pub_->publish(msg);
 
@@ -664,13 +714,19 @@ void StandardRobotPpRos2Node::publishRobotStatus(ReceiveRobotStatus & robot_stat
   }
 }
 
-void StandardRobotPpRos2Node::publishJointState(ReceiveJointState & packet)
+void StandardRobotPpRos2Node::publishPowerHeat(ReceivePowerHeatData & power_heat)
+{
+  // Store the current heat value to be used in publishRobotStatus
+  current_shooter_heat_ = power_heat.data.shooter_17mm_barrel_heat;
+}
+
+void StandardRobotPpRos2Node::publishJointState(ReceiveJointStateData & packet)
 {
   last_gimbal_pitch_odom_joint_ = packet.data.pitch;
   last_gimbal_yaw_odom_joint_ = packet.data.yaw;
 }
 
-void StandardRobotPpRos2Node::publishBuff(ReceiveBuff & buff)
+void StandardRobotPpRos2Node::publishBuff(ReceiveBuffData & buff)
 {
   pb_rm_interfaces::msg::Buff msg;
   msg.recovery_buff = buff.data.recovery_buff;
@@ -682,25 +738,15 @@ void StandardRobotPpRos2Node::publishBuff(ReceiveBuff & buff)
   buff_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishSentryInfo(ReceiveSentryInfo & sentry_info)
+void StandardRobotPpRos2Node::publishShootData(ReceiveShootData & shoot)
 {
-  pb_rm_interfaces::msg::SentryInfo msg;
+  auto_aim_interfaces::msg::ShootInfo msg;
+  msg.bullet_type = shoot.data.bullet_type;
+  msg.shooter_number = shoot.data.shooter_number;
+  msg.launching_frequency = shoot.data.launching_frequency;
+  msg.initial_speed = shoot.data.initial_speed;
 
-  // 解析 sentry_info (uint32, bit 0-31)
-  msg.exchanged_projectile_allowance = sentry_info.data.sentry_info & 0x7FF;
-  msg.remote_projectile_exchange_count = (sentry_info.data.sentry_info >> 11) & 0xF;
-  msg.remote_hp_exchange_count = (sentry_info.data.sentry_info >> 15) & 0xF;
-  msg.can_free_respawn = (sentry_info.data.sentry_info >> 19) & 0x1;
-  msg.can_pay_respawn = (sentry_info.data.sentry_info >> 20) & 0x1;
-  msg.respawn_gold_cost = (sentry_info.data.sentry_info >> 21) & 0x3FF;
-
-  // 解析 sentry_info_2 (uint16, bit 0-15)
-  // 解析 sentry_info_2 (uint16, bit 0-15)
-  msg.is_out_of_combat = (sentry_info.data.sentry_info_2 >> 0) & 0x1;                    // ★V1.2.0新增
-  msg.team_projectile_allowance_remaining = (sentry_info.data.sentry_info_2 >> 1) & 0x7FF; // ★V1.2.0新增
-  msg.current_posture = (sentry_info.data.sentry_info_2 >> 12) & 0x3;
-  msg.can_activate_rune = (sentry_info.data.sentry_info_2 >> 14) & 0x1;
-  sentry_info_pub_->publish(msg);
+  shot_info_pub_->publish(msg);
 }
 
 /********************************************************/
@@ -743,11 +789,11 @@ void StandardRobotPpRos2Node::sendData()
       crc16::append_CRC16_check_sum(
         reinterpret_cast<uint8_t *>(&send_robot_cmd_data_), sizeof(SendRobotCmdData));
 
-      // 发送机器人控制数据
+      // 发送数据
       std::vector<uint8_t> send_data = toVector(send_robot_cmd_data_);
       serial_driver_->port()->send(send_data);
 
-      // 发送哨兵指令数据
+      // 发送哨兵指令数据包
       crc16::append_CRC16_check_sum(
         reinterpret_cast<uint8_t *>(&send_sentry_cmd_data_), sizeof(SendSentryCmdData));
       std::vector<uint8_t> sentry_cmd_data = toVector(send_sentry_cmd_data_);
@@ -797,8 +843,7 @@ void StandardRobotPpRos2Node::cmdShootCallback(const example_interfaces::msg::UI
   send_robot_cmd_data_.data.shoot.fire = msg->data;
 }
 
-void StandardRobotPpRos2Node::sentryCmdCallback(
-  const pb_rm_interfaces::msg::SentryCmd::SharedPtr msg)
+void StandardRobotPpRos2Node::sentryCmdCallback(const pb_rm_interfaces::msg::SentryCmd::SharedPtr msg)
 {
   // sentry_cmd (uint32, bit 0-31)
   send_sentry_cmd_data_.data.sentry_cmd = 0;
