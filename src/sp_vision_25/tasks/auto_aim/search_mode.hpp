@@ -26,13 +26,15 @@ private:
   bool enabled_;
   double lost_timeout_;       // 丢失后进入寻敌的延时(秒)
   double yaw_speed_;          // yaw 旋转速度 (rad/s)
-  double pitch_speed_;        // pitch 点头速度 (rad/s)
+  double pitch_speed_;        // pitch 点头速度 (rad/s) - 已弃用，改用正弦波
   double pitch_center_;       // pitch 中心角度 (rad)
   double pitch_amplitude_;    // pitch 上下幅度 (rad)
+  double pitch_frequency_;    // pitch 正弦波频率 (Hz)
 
   bool active_ = false;
   bool timing_ = false;
   std::chrono::steady_clock::time_point lost_start_time_;
+  std::chrono::steady_clock::time_point search_start_time_;  // 寻敌模式开始时间
 };
 
 }  // namespace auto_aim

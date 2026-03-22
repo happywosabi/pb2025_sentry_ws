@@ -14,7 +14,8 @@ ROS2CBoard::ROS2CBoard(
   shoot_mode(ShootMode::both_shoot),
   ft_angle(0.0),
   imu_received_(false),
-  running_(true)
+  running_(true),
+  last_send_time_(std::chrono::steady_clock::now())
 {
   // 初始化ROS2（如果尚未初始化）
   if (!rclcpp::ok()) {
@@ -94,6 +95,21 @@ Eigen::Quaterniond ROS2CBoard::imu_at(std::chrono::steady_clock::time_point time
 
 void ROS2CBoard::send(Command command)
 {
+  // 速率限制：限制为100Hz（匹配GimbalManagerNode的定时器频率）
+  {
+    std::lock_guard<std::mutex> lock(send_mutex_);
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration<double>(now - last_send_time_).count();
+    double min_interval = 1.0 / send_rate_hz_;  // 0.01秒 = 10ms
+
+    if (elapsed < min_interval) {
+      // 距离上次发送时间太短，跳过本次发送
+      return;
+    }
+
+    last_send_time_ = now;
+  }
+
   // 发布云台指令
   auto gimbal_cmd = pb_rm_interfaces::msg::GimbalCmd();
   gimbal_cmd.header.stamp = node_->now();
@@ -145,14 +161,31 @@ void ROS2CBoard::send(Command command)
 
 void ROS2CBoard::joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr msg)
 {
-  // 提取yaw和pitch关节角度
-  if (msg->position.size() < 2) {
-    fmt::print("[ROS2CBoard] Warning: JointState has insufficient position data\n");
+  // 提取 yaw 和 pitch 关节角度 - 按 joint name 查找，避免硬编码下标
+  if (msg->name.empty() || msg->position.empty()) {
+    fmt::print("[ROS2CBoard] Warning: JointState has no name or position data\n");
     return;
   }
 
-  double pitch = msg->position[0];    // yaw关节角度 (rad)
-  double yaw = msg->position[1];  // pitch关节角度 (rad)
+  // 查找 gimbal_pitch_joint 和 gimbal_yaw_joint 的索引
+  int pitch_idx = -1, yaw_idx = -1;
+  for (size_t i = 0; i < msg->name.size(); ++i) {
+    if (msg->name[i] == "gimbal_pitch_joint") {
+      pitch_idx = static_cast<int>(i);
+    } else if (msg->name[i] == "gimbal_yaw_joint") {
+      yaw_idx = static_cast<int>(i);
+    }
+  }
+
+  if (pitch_idx < 0 || yaw_idx < 0 ||
+      static_cast<size_t>(pitch_idx) >= msg->position.size() ||
+      static_cast<size_t>(yaw_idx) >= msg->position.size()) {
+    fmt::print("[ROS2CBoard] Warning: Could not find gimbal_pitch_joint or gimbal_yaw_joint\n");
+    return;
+  }
+
+  double pitch = msg->position[pitch_idx];  // pitch 关节角度 (rad)
+  double yaw = msg->position[yaw_idx];      // yaw 关节角度 (rad)
 
   // 转换为四元数
   Eigen::Quaterniond q = joint_angles_to_quaternion(yaw, pitch);

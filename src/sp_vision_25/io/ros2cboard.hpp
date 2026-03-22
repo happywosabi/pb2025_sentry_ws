@@ -112,6 +112,11 @@ private:
   // Spin线程
   std::unique_ptr<std::thread> spin_thread_;
   std::atomic<bool> running_;
+
+  // 速率限制（100Hz）
+  std::chrono::steady_clock::time_point last_send_time_;
+  std::mutex send_mutex_;
+  static constexpr double send_rate_hz_ = 100.0;  // 发送频率限制为100Hz，匹配GimbalManagerNode
 };
 
 }  // namespace io

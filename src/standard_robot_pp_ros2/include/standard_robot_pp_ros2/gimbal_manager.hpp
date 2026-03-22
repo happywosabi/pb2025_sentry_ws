@@ -55,11 +55,14 @@ private:
     AxisControl pitch_ctrl;
     AxisControl yaw_ctrl;
     rclcpp::Time last_update;
+    rclcpp::Time last_cmd_received;  // 最后一次收到命令的时间
   } state_;
 
   rclcpp::Subscription<pb_rm_interfaces::msg::GimbalCmd>::SharedPtr cmd_sub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
+
+  static constexpr double cmd_timeout_sec_ = 0.1;  // 命令超时时间：100ms
 };
 }  // namespace standard_robot_pp_ros2
 
