@@ -73,11 +73,24 @@ decision_speed: 10 # rad/s
 high_speed_delay_time: 0.080 # s
 low_speed_delay_time: 0.040 # s
 
+#####-----反陀螺中心瞄准参数-----#####
+spin_center_track_speed: 6.0 # rad/s - 激活中心瞄准的角速度阈值(对面转速超过此值时yaw锁定车辆中心)
+spin_fire_angle: 15 # degree - 装甲板朝向角度窗口(装甲板转到正面±N°内允许射击)
+
 #####-----shooter参数-----#####
 first_tolerance: 5 # 近距离射击容差，degree
 second_tolerance: 2 # 远距离射击容差，degree
 judge_distance: 3 #距离判断阈值
 auto_fire: true # 是否由自瞄控制射击
+
+#####-----寻敌模式参数-----#####
+search_mode:
+  enabled: true             # 是否启用寻敌模式
+  lost_timeout: 3.0         # 丢失目标后进入寻敌模式的延迟(秒)
+  yaw_speed: 1.5            # yaw旋转速度(rad/s，正=逆时针，负=顺时针)
+  pitch_speed: 0.3          # pitch点头速度(rad/s)
+  pitch_center: 0.0         # pitch中心角度(rad)
+  pitch_amplitude: 0.15     # pitch上下幅度(rad)
 
 #####-----decider参数-----#####
 mode: 1

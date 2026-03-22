@@ -22,11 +22,16 @@ Aimer::Aimer(const std::string & config_path)
   high_speed_delay_time_ = yaml["high_speed_delay_time"].as<double>();
   low_speed_delay_time_ = yaml["low_speed_delay_time"].as<double>();
   decision_speed_ = yaml["decision_speed"].as<double>();
+  spin_center_track_speed_ = yaml["spin_center_track_speed"].as<double>(6.0);
+  spin_fire_angle_ = yaml["spin_fire_angle"].as<double>(15.0) / 57.3;  // degree to rad
   if (yaml["left_yaw_offset"].IsDefined() && yaml["right_yaw_offset"].IsDefined()) {
     left_yaw_offset_ = yaml["left_yaw_offset"].as<double>() / 57.3;    // degree to rad
     right_yaw_offset_ = yaml["right_yaw_offset"].as<double>() / 57.3;  // degree to rad
     tools::logger()->info("[Aimer] successfully loading shootmode");
   }
+  tools::logger()->info(
+    "[Aimer] spin_center_track_speed={:.1f} rad/s, spin_fire_angle={:.1f} deg",
+    spin_center_track_speed_, spin_fire_angle_ * 57.3);
 }
 
 io::Command Aimer::aim(
@@ -64,7 +69,13 @@ io::Command Aimer::aim(
     target.predict(future);
   }
 
-  auto aim_point0 = choose_aim_point(target);
+  // 根据角速度选择瞄准策略：高速旋转时使用中心瞄准模式
+  bool use_center_track = (std::abs(target.ekf_x()[7]) > spin_center_track_speed_ &&
+                           target.name != ArmorName::outpost);
+  center_track_active_ = use_center_track;
+
+  auto aim_point0 = use_center_track ? choose_aim_point_center_track(target)
+                                     : choose_aim_point(target);
   debug_aim_point = aim_point0;
   if (!aim_point0.valid) {
     // tools::logger()->debug("Invalid aim_point0.");
@@ -98,8 +109,9 @@ io::Command Aimer::aim(
     auto predict_time = future + std::chrono::microseconds(static_cast<int>(prev_fly_time * 1e6));
     iteration_target[iter].predict(predict_time);
 
-    // 计算瞄准点
-    auto aim_point = choose_aim_point(iteration_target[iter]);
+    // 计算瞄准点（迭代中保持与初始相同的瞄准策略）
+    auto aim_point = use_center_track ? choose_aim_point_center_track(iteration_target[iter])
+                                      : choose_aim_point(iteration_target[iter]);
     debug_aim_point = aim_point;
     if (!aim_point.valid) {
       io::Command cmd = last_valid_command_;
@@ -186,8 +198,8 @@ AimPoint Aimer::choose_aim_point(const Target & target)
     delta_angle_list.emplace_back(delta_angle);
   }
 
-  // 不考虑小陀螺
-  if (std::abs(target.ekf_x()[8]) <= 2 && target.name != ArmorName::outpost) {
+  // 不考虑小陀螺（使用x[7]角速度判断，而非x[8]半径）
+  if (std::abs(target.ekf_x()[7]) <= 2 && target.name != ArmorName::outpost) {
     // 选择在可射击范围内的装甲板
     std::vector<int> id_list;
     for (int i = 0; i < armor_num; i++) {
@@ -233,6 +245,36 @@ AimPoint Aimer::choose_aim_point(const Target & target)
   }
 
   return {false, armor_xyza_list[0]};
+}
+
+AimPoint Aimer::choose_aim_point_center_track(const Target & target)
+{
+  Eigen::VectorXd ekf_x = target.ekf_x();
+  std::vector<Eigen::Vector4d> armor_xyza_list = target.armor_xyza_list();
+  auto armor_num = armor_xyza_list.size();
+
+  // 如果装甲板未发生过跳变，只有一个装甲板已知，退化为普通瞄准
+  if (!target.jumped) return {true, armor_xyza_list[0]};
+
+  // 整车旋转中心的球坐标yaw（用于稳定yaw方向）
+  auto center_yaw = std::atan2(ekf_x[2], ekf_x[0]);
+
+  // 找到最接近正面朝向我们的装甲板（|delta_angle|最小）
+  double min_abs_delta = 1e10;
+  int best_id = 0;
+  for (int i = 0; i < static_cast<int>(armor_num); i++) {
+    auto delta_angle = std::abs(tools::limit_rad(armor_xyza_list[i][3] - center_yaw));
+    if (delta_angle < min_abs_delta) {
+      min_abs_delta = delta_angle;
+      best_id = i;
+    }
+  }
+
+  // 中心瞄准：yaw方向使用旋转中心坐标（稳定），pitch方向使用最近装甲板高度
+  double aim_z = armor_xyza_list[best_id][2];  // 装甲板z坐标（已含Δh修正）
+
+  // 返回的瞄准点：xy使用旋转中心，z使用最近装甲板高度，angle用center_yaw
+  return {true, Eigen::Vector4d{ekf_x[0], ekf_x[2], aim_z, center_yaw}};
 }
 
 }  // namespace auto_aim

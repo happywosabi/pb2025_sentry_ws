@@ -31,6 +31,7 @@
 // #include "io/ros2/ros2.hpp"          // 依赖sp_msgs，暂时注释
 #include "io/usbcamera/usbcamera.hpp"
 #include "tasks/auto_aim/aimer.hpp"
+#include "tasks/auto_aim/search_mode.hpp"
 #include "tasks/auto_aim/shooter.hpp"
 #include "tasks/auto_aim/solver.hpp"
 #include "tasks/auto_aim/tracker.hpp"
@@ -235,6 +236,7 @@ int main(int argc, char * argv[])
   auto_aim::Tracker tracker(config_path, solver);
   auto_aim::Aimer aimer(config_path);
   auto_aim::Shooter shooter(config_path);
+  auto_aim::SearchMode search_mode(config_path);
 
   // omniperception::Decider decider(config_path);  // 全向感知，暂时不需要
 
@@ -329,6 +331,14 @@ int main(int argc, char * argv[])
     // Debug: 射击决策
     fmt::print("[Main] ✓ Shoot: {}\n", command.shoot);
 
+    /// 寻敌模式：在发送前检查是否需要进入寻敌
+    search_mode.update(command, tracker.state(), timestamp);
+
+    // Debug: 寻敌状态
+    if (search_mode.is_active()) {
+      fmt::print("[Main] ✓ Search mode ACTIVE\n");
+    }
+
     // 发送控制指令（到ROS2话题）
     cboard.send(command);
 
@@ -379,7 +389,17 @@ int main(int argc, char * argv[])
       }
 
       // 绘制控制指令
-      if (command.control) {
+      if (search_mode.is_active()) {
+        tools::draw_text(debug_img, "Search Mode", {10, 120}, {0, 165, 255});
+      } else if (aimer.is_center_track_active() && command.control) {
+        tools::draw_text(debug_img, "Center Track (Anti-Spin)", {10, 120}, {0, 255, 128});
+        tools::draw_text(
+          debug_img,
+          fmt::format(
+            "Cmd: Y={:.1f} P={:.1f} S={}", command.yaw * 57.3, command.pitch * 57.3,
+            command.shoot),
+          {10, 150}, {0, 255, 255});
+      } else if (command.control) {
         tools::draw_text(
           debug_img,
           fmt::format(

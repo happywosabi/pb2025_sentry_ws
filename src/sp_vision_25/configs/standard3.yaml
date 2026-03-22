@@ -45,6 +45,10 @@ decision_speed: 7 # rad/s
 high_speed_delay_time: 0.0 # s
 low_speed_delay_time: 0.0 # s planner use this value
 
+#####-----反陀螺中心瞄准参数-----#####
+spin_center_track_speed: 6.0 # rad/s - 激活中心瞄准的角速度阈值
+spin_fire_angle: 15 # degree - 装甲板朝向角度窗口
+
 #####-----shooter参数-----#####
 first_tolerance: 3 # 近距离射击容差，degree
 second_tolerance: 2 # 远距离射击容差，degree
@@ -100,3 +104,7 @@ model: "assets/yolo11_buff_int8.xml"
 #####-----buff_aimer参数-----#####
 fire_gap_time: 0.700   # s
 predict_time: 0.120     # s
+
+#####-----寻敌模式参数-----#####
+search_mode:
+  enabled: false

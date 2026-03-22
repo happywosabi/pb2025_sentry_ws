@@ -23,6 +23,10 @@ private:
   double first_tolerance_;
   double second_tolerance_;
   bool auto_fire_;
+
+  // 反陀螺中心瞄准模式参数
+  double spin_center_track_speed_;  // 激活中心瞄准的角速度阈值 (rad/s)
+  double spin_fire_angle_;          // 装甲板朝向角度射击窗口 (rad)
 };
 }  // namespace auto_aim
 
