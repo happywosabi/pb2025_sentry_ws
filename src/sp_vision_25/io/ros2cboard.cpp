@@ -99,7 +99,17 @@ void ROS2CBoard::send(Command command)
   gimbal_cmd.header.stamp = node_->now();
   gimbal_cmd.header.frame_id = "gimbal_yaw";
 
-  if (command.control) {
+  if (command.search) {
+    // 寻敌模式：速度控制，yaw连续旋转 + pitch小幅点头
+    gimbal_cmd.yaw_type = pb_rm_interfaces::msg::GimbalCmd::VELOCITY;
+    gimbal_cmd.pitch_type = pb_rm_interfaces::msg::GimbalCmd::VELOCITY;
+    gimbal_cmd.velocity.yaw = static_cast<float>(command.search_yaw_speed);
+    gimbal_cmd.velocity.pitch = static_cast<float>(command.search_pitch_speed);
+    gimbal_cmd.velocity.yaw_min_range = -3.14159f;
+    gimbal_cmd.velocity.yaw_max_range = 3.14159f;
+    gimbal_cmd.velocity.pitch_min_range = static_cast<float>(command.search_pitch_min);
+    gimbal_cmd.velocity.pitch_max_range = static_cast<float>(command.search_pitch_max);
+  } else if (command.control) {
     // 自瞄控制模式：使用绝对角度控制
     gimbal_cmd.yaw_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
     gimbal_cmd.pitch_type = pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE;
@@ -119,7 +129,7 @@ void ROS2CBoard::send(Command command)
     gimbal_cmd.velocity.pitch = 0.0f;
   }
 
-  // 设置角度范围
+  // 设置角度范围（仅用于 position 模式）
   gimbal_cmd.position.yaw_min_range = -3.14159f;
   gimbal_cmd.position.yaw_max_range = 3.14159f;
   gimbal_cmd.position.pitch_min_range = -0.5f;
