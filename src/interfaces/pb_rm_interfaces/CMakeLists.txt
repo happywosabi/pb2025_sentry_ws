@@ -21,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/referee/RobotStatus.msg"
   "msg/referee/SentryInfo.msg"
   "msg/referee/SentryCmd.msg"
+  "msg/referee/Warning.msg"
   "msg/Gimbal.msg"
   "msg/GimbalCmd.msg"
   "msg/Models.msg"
