@@ -54,9 +54,6 @@ void GimbalManagerNode::gimbalCmdCallback(const pb_rm_interfaces::msg::GimbalCmd
 
   *last_msg = *msg;
 
-  // 记录命令接收时间（用于超时检测）
-  state_.last_cmd_received = now();
-
   if (msg->pitch_type == pb_rm_interfaces::msg::GimbalCmd::ABSOLUTE_ANGLE) {
     state_.pitch = msg->position.pitch;
     state_.pitch_ctrl.mode = ControlMode::POSITION;
@@ -87,23 +84,6 @@ void GimbalManagerNode::gimbalCmdCallback(const pb_rm_interfaces::msg::GimbalCmd
 
 void GimbalManagerNode::updateState(double delta_time)
 {
-  // 检查命令是否超时（100ms无新命令）
-  const auto current_time = now();
-  const bool cmd_timeout =
-    state_.last_cmd_received.nanoseconds() > 0 &&
-    (current_time - state_.last_cmd_received).seconds() > cmd_timeout_sec_;
-
-  // 如果命令超时，将速度模式的速度设为0（停止运动）
-  if (cmd_timeout) {
-    if (state_.pitch_ctrl.mode == ControlMode::VELOCITY) {
-      state_.pitch_ctrl.velocity = 0.0f;
-    }
-    if (state_.yaw_ctrl.mode == ControlMode::VELOCITY) {
-      state_.yaw_ctrl.velocity = 0.0f;
-    }
-  }
-
-  // 正常的速度积分逻辑
   if (state_.pitch_ctrl.mode == ControlMode::VELOCITY) {
     state_.pitch = updateAxisPosition(state_.pitch, state_.pitch_ctrl, delta_time);
   }

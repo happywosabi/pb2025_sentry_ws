@@ -14,6 +14,7 @@
 
 #include "standard_robot_pp_ros2/standard_robot_pp_ros2.hpp"
 
+#include <auto_aim_interfaces/msg/detail/shoot_info__struct.hpp>
 #include <memory>
 #include <pb_rm_interfaces/msg/detail/warning__struct.hpp>
 
@@ -125,10 +126,6 @@ void StandardRobotPpRos2Node::createSubscription()
   cmd_tracking_sub_ = this->create_subscription<auto_aim_interfaces::msg::Target>(
     "tracker/target", 10,
     std::bind(&StandardRobotPpRos2Node::visionTargetCallback, this, std::placeholders::_1));
-
-  sentry_cmd_sub_ = this->create_subscription<pb_rm_interfaces::msg::SentryCmd>(
-    "sentry_cmd", 10,
-    std::bind(&StandardRobotPpRos2Node::sentryCmdCallback, this, std::placeholders::_1));
 }
 
 void StandardRobotPpRos2Node::getParams()
@@ -405,10 +402,6 @@ void StandardRobotPpRos2Node::receiveData()
           ReceiveRobotMotionData robot_motion_data = fromVector<ReceiveRobotMotionData>(data_buf);
           publishRobotMotion(robot_motion_data);
         } break;
-        case ID_POWER_HEAT_DATA: {
-          ReceivePowerHeatData power_heat_data = fromVector<ReceivePowerHeatData>(data_buf);
-          publishPowerHeat(power_heat_data);
-        } break;
         // case ID_PID_DEBUG: {
         //   RCLCPP_WARN(get_logger(), "Not implemented yet!");
         // } break;
@@ -679,7 +672,6 @@ void StandardRobotPpRos2Node::publishRobotStatus(ReceiveRobotStatusData & robot_
   msg.maximum_hp = robot_status.data.maximum_HP;
   msg.shooter_barrel_cooling_value = robot_status.data.shooter_barrel_cooling_value;
   msg.shooter_barrel_heat_limit = robot_status.data.shooter_barrel_heat_limit;
-  msg.shooter_17mm_1_barrel_heat = current_shooter_heat_;  // Use stored heat value from PowerHeatData
 
   msg.robot_pos.position.x = robot_status.data.x;
   msg.robot_pos.position.y = robot_status.data.y;
@@ -712,12 +704,6 @@ void StandardRobotPpRos2Node::publishRobotStatus(ReceiveRobotStatusData & robot_
       }
     }
   }
-}
-
-void StandardRobotPpRos2Node::publishPowerHeat(ReceivePowerHeatData & power_heat)
-{
-  // Store the current heat value to be used in publishRobotStatus
-  current_shooter_heat_ = power_heat.data.shooter_17mm_barrel_heat;
 }
 
 void StandardRobotPpRos2Node::publishJointState(ReceiveJointStateData & packet)
@@ -766,14 +752,6 @@ void StandardRobotPpRos2Node::sendData()
   crc8::append_CRC8_check_sum(
     reinterpret_cast<uint8_t *>(&send_robot_cmd_data_), sizeof(HeaderFrame));
 
-  // 初始化哨兵指令数据包
-  send_sentry_cmd_data_.frame_header.sof = SOF_SEND;
-  send_sentry_cmd_data_.frame_header.id = ID_SENTRY_CMD;
-  send_sentry_cmd_data_.frame_header.len = sizeof(SendSentryCmdData) - 6;
-  send_sentry_cmd_data_.data.sentry_cmd = 0;
-  crc8::append_CRC8_check_sum(
-    reinterpret_cast<uint8_t *>(&send_sentry_cmd_data_), sizeof(HeaderFrame));
-
   int retry_count = 0;
 
   while (rclcpp::ok()) {
@@ -792,12 +770,6 @@ void StandardRobotPpRos2Node::sendData()
       // 发送数据
       std::vector<uint8_t> send_data = toVector(send_robot_cmd_data_);
       serial_driver_->port()->send(send_data);
-
-      // 发送哨兵指令数据包
-      crc16::append_CRC16_check_sum(
-        reinterpret_cast<uint8_t *>(&send_sentry_cmd_data_), sizeof(SendSentryCmdData));
-      std::vector<uint8_t> sentry_cmd_data = toVector(send_sentry_cmd_data_);
-      serial_driver_->port()->send(sentry_cmd_data);
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error sending data: %s", ex.what());
       is_usb_ok_ = false;
@@ -841,22 +813,6 @@ void StandardRobotPpRos2Node::cmdShootCallback(const example_interfaces::msg::UI
 {
   send_robot_cmd_data_.data.shoot.fric_on = true;
   send_robot_cmd_data_.data.shoot.fire = msg->data;
-}
-
-void StandardRobotPpRos2Node::sentryCmdCallback(const pb_rm_interfaces::msg::SentryCmd::SharedPtr msg)
-{
-  // sentry_cmd (uint32, bit 0-31)
-  send_sentry_cmd_data_.data.sentry_cmd = 0;
-
-  send_sentry_cmd_data_.data.sentry_cmd |= (msg->confirm_respawn & 0x1);
-  send_sentry_cmd_data_.data.sentry_cmd |= ((msg->confirm_pay_respawn & 0x1) << 1);
-  send_sentry_cmd_data_.data.sentry_cmd |= ((msg->projectile_allowance_to_exchange & 0x7FF) << 2);
-  send_sentry_cmd_data_.data.sentry_cmd |= ((msg->remote_projectile_request_count & 0xF) << 13);
-  send_sentry_cmd_data_.data.sentry_cmd |= ((msg->remote_hp_request_count & 0xF) << 17);
-  send_sentry_cmd_data_.data.sentry_cmd |= ((msg->posture_command & 0x3) << 21);
-  send_sentry_cmd_data_.data.sentry_cmd |= ((msg->activate_rune & 0x1) << 23);
-
-  RCLCPP_INFO(get_logger(), "Sentry cmd: 0x%08X", send_sentry_cmd_data_.data.sentry_cmd);
 }
 
 void StandardRobotPpRos2Node::setParam(const rclcpp::Parameter & param)

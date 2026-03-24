@@ -20,7 +20,13 @@ __pycache__
 /*.pdf
 
 
-sentry.yaml
+
 symlink
 script/*.sh
 sentry_*/
+build.log
+vision_full/
+vision_full_1/
+vision_full2/
+testopenvino/
+sp_ws/

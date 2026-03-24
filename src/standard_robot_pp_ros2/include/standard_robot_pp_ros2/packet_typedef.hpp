@@ -60,7 +60,6 @@ const uint8_t ID_ROBOT_MOTION_DATA = 0x1E;
 
 // Send
 const uint8_t ID_ROBOT_CMD = 0x01;
-const uint8_t ID_SENTRY_CMD = 0x04;  // 哨兵自主决策指令
 
 const uint8_t DEBUG_PACKAGE_NUM = 10;
 const uint8_t DEBUG_PACKAGE_NAME_LEN = 10;
@@ -634,20 +633,6 @@ struct SendRobotCmdData
     {
       bool tracking;
     } __attribute__((packed)) tracking;
-  } __attribute__((packed)) data;
-
-  uint16_t checksum;
-} __attribute__((packed));
-
-// 哨兵自主决策指令数据包 (0x04 - 依据：表1-32)
-struct SendSentryCmdData
-{
-  HeaderFrame frame_header;
-  uint32_t time_stamp;
-
-  struct
-  {
-    uint32_t sentry_cmd;  // bit 0-31
   } __attribute__((packed)) data;
 
   uint16_t checksum;

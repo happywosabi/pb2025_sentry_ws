@@ -34,7 +34,6 @@
 #include "pb_rm_interfaces/msg/rfid_status.hpp"
 #include "pb_rm_interfaces/msg/robot_state_info.hpp"
 #include "pb_rm_interfaces/msg/robot_status.hpp"
-#include "pb_rm_interfaces/msg/sentry_cmd.hpp"
 #include "pb_rm_interfaces/msg/warning.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
@@ -86,14 +85,12 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr cmd_gimbal_joint_sub_;
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_shoot_sub_;
   rclcpp::Subscription<auto_aim_interfaces::msg::Target>::SharedPtr cmd_tracking_sub_;
-  rclcpp::Subscription<pb_rm_interfaces::msg::SentryCmd>::SharedPtr sentry_cmd_sub_;
 
   RobotModels robot_models_;
   std::unordered_map<std::string, rclcpp::Publisher<example_interfaces::msg::Float64>::SharedPtr>
     debug_pub_map_;
 
   SendRobotCmdData send_robot_cmd_data_;
-  SendSentryCmdData send_sentry_cmd_data_;
 
   void getParams();
   void createPublisher();
@@ -142,7 +139,6 @@ private:
   void cmdGimbalJointCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
   void cmdShootCallback(const example_interfaces::msg::UInt8::SharedPtr msg);
   void visionTargetCallback(const auto_aim_interfaces::msg::Target::SharedPtr msg);
-  void sentryCmdCallback(const pb_rm_interfaces::msg::SentryCmd::SharedPtr msg);
 
   void setParam(const rclcpp::Parameter & param);
   bool getDetectColor(uint8_t robot_id, uint8_t & color);
@@ -160,7 +156,6 @@ private:
 
   float last_hp_;
   float last_gimbal_pitch_odom_joint_, last_gimbal_yaw_odom_joint_;
-  uint16_t current_shooter_heat_ = 0;  // Store current heat from PowerHeatData packet
 };
 }  // namespace standard_robot_pp_ros2
 
