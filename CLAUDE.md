@@ -14,16 +14,18 @@ The system follows a modular ROS2 architecture with four main functional layers:
    - `standard_robot_pp_ros2`: Serial communication with embedded systems (STM32), publishes referee system data and gimbal joint states
    - `hik_camera_ros2_driver`: HikRobot industrial camera driver for image acquisition
 
-2. **Perception Layer**
-   - **`sp_vision_25`** (NEW): High-performance vision system with native camera access
-     - Integrated YOLO detection, EKF tracking, ballistic solver in single node
-     - Publishes `/tracker/target` for decision layer
-     - Publishes `/cmd_gimbal`, `/cmd_shoot` for gimbal control
-     - Direct hardware access for <1ms latency (no ROS2 image topic overhead)
-   - `pb2025_rm_vision`: Original armor plate detection and tracking (legacy/backup)
-     - `armor_detector_opencv` or `armor_detector_openvino`: Real-time enemy armor detection
-     - `armor_tracker`: Extended Kalman Filter based target state estimation
-     - `projectile_motion`: Ballistic trajectory calculation with compensation
+2. **Perception Layer (主方案: sp_vision_25)**
+   - **`sp_vision_25`**: High-performance single-process vision system with native camera access
+     - Integrated YOLO detection, EKF tracking, ballistic solver, and autonomous shoot decision
+     - Directly publishes `/cmd_gimbal` and `/cmd_shoot` to the serial node — **shoot is NOT controlled by behavior tree**
+     - Native HikRobot SDK access (no ROS2 image topic hop) for sub-frame latency
+     - Standalone YAML config: `src/sp_vision_25/configs/sentry.yaml`
+     - Companion adapter: `sp_vision_ros2_adapter` (optional ROS2 bridge utilities)
+   - **DEPRECATED — `pb2025_rm_vision`**: Legacy multi-node ROS2 pipeline, retained for `use_sp_vision:=False` compatibility only
+     - `armor_detector_opencv` / `armor_detector_openvino`: Armor detection
+     - `armor_tracker`: EKF target state estimation
+     - `projectile_motion`: Ballistic + gimbal/shoot output
+     - No new feature work; do not extend
 
 3. **Navigation Layer**
    - `pb2025_sentry_nav`: Autonomous navigation stack
@@ -44,9 +46,11 @@ The system follows a modular ROS2 architecture with four main functional layers:
 ### Key Data Flow
 
 - Referee system data (robot HP, ammo, game status) → GlobalBlackboard → Behavior tree conditions
-- Camera images → Armor detector → Armor tracker → Projectile motion → Gimbal commands
-- LiDAR + IMU → Point-LIO → Odometry → Nav2 → Chassis velocity commands
-- Behavior tree decisions → Navigation goals / Gimbal targets / Chassis velocities
+- Camera (native SDK) → sp_vision_25 (YOLO + EKF + ballistic + autonomous shoot) → `/cmd_gimbal` + `/cmd_shoot` → serial → STM32
+- LiDAR + IMU → Point-LIO → Odometry → Nav2 → `/cmd_vel` → serial → STM32
+- Behavior tree decisions → `/goal_pose` (Nav2 goal) and `/cmd_vel` only — does **not** issue gimbal/shoot commands
+
+> Legacy mode (`use_sp_vision:=False`): Camera image topic → armor_detector → armor_tracker → projectile_motion → `/cmd_gimbal` + `/cmd_shoot`.
 
 ## Build Commands
 
@@ -83,15 +87,7 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Debug
 
 ### Full System Launch
 
-Launch all modules (serial, vision, navigation, behavior tree):
-```bash
-ros2 launch pb2025_sentry_bringup bringup.launch.py \
-  world:=<YOUR_WORLD_NAME> \
-  use_rviz:=True \
-  params_file:=<ABSOLUTE_PATH_TO_PARAMS>
-```
-
-**NEW: Use sp_vision_25 high-performance vision**:
+**Recommended — sp_vision_25 (current main perception)**:
 ```bash
 ros2 launch pb2025_sentry_bringup bringup.launch.py \
   world:=<YOUR_WORLD_NAME> \
@@ -100,6 +96,18 @@ ros2 launch pb2025_sentry_bringup bringup.launch.py \
   use_rviz:=True \
   params_file:=<ABSOLUTE_PATH_TO_PARAMS>
 ```
+
+**Legacy compatibility — pb2025_rm_vision (deprecated)**:
+```bash
+ros2 launch pb2025_sentry_bringup bringup.launch.py \
+  world:=<YOUR_WORLD_NAME> \
+  use_sp_vision:=False \
+  detector:=opencv \
+  use_rviz:=True \
+  params_file:=<ABSOLUTE_PATH_TO_PARAMS>
+```
+
+> Note: the launch file's current default is still `use_sp_vision:=False` for backward compatibility — new deployments should explicitly pass `use_sp_vision:=True`.
 
 **Available sp_vision configuration files:**
 - `sentry.yaml` (default): Sentry robot configuration
@@ -134,7 +142,13 @@ Serial communication:
 ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py use_rviz:=True params_file:=<PARAMS_FILE>
 ```
 
-Vision system:
+Vision system (sp_vision_25, recommended):
+```bash
+ros2 launch sp_vision_25 sp_vision_25.launch.py \
+  config_path:=$(ros2 pkg prefix sp_vision_25)/share/sp_vision_25/configs/sentry.yaml
+```
+
+Vision system (legacy pb2025_rm_vision, deprecated):
 ```bash
 ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py \
   use_composition:=True \
@@ -197,10 +211,12 @@ All node parameters are centralized in: `src/pb2025_sentry_bringup/params/node_p
 
 Key parameter groups:
 - `standard_robot_pp_ros2`: Serial port, baud rate, detector color, rosbag recording
-- `hik_camera_ros2_driver`: Camera frame rate, exposure, gain, pixel format
-- `armor_detector_*`: Detection thresholds, model paths (OpenCV/OpenVINO)
-- `armor_tracker`: EKF parameters, tracking thresholds
-- `projectile_motion`: Ballistic compensation, gimbal offsets, projectile speed
+- `hik_camera_ros2_driver`: Camera frame rate, exposure, gain, pixel format **(only used in legacy mode)**
+- `armor_detector_*`, `armor_tracker`, `projectile_motion`: Legacy vision parameters **(only read when `use_sp_vision:=False`)**
+- `pointlio_mapping`, `controller_server`, `planner_server`: Navigation
+- `pb2025_sentry_behavior_server`: Behavior tree
+
+In the recommended (sp_vision_25) mode the legacy vision parameter groups are ignored — vision tuning happens in `src/sp_vision_25/configs/sentry.yaml`.
 
 ### Map and PCD Files
 
@@ -235,7 +251,7 @@ sp_vision_25 uses a standalone YAML configuration format (not ROS2 parameter for
 
 This workspace requires external dependencies beyond standard ROS2 packages:
 
-- **OpenVINO 2023.3**: For armor detector inference (install from official docs)
+- **OpenVINO 2023.3**: Required for sp_vision_25 YOLO inference (and the legacy `armor_detector_openvino`)
 - **small_gicp**: Point cloud registration library for relocalization
   ```bash
   sudo apt install -y libeigen3-dev libomp-dev
@@ -289,14 +305,17 @@ vcs import --recursive . < dependencies.repos
 **Complete Developer Manual**: [`README.md`](./README.md) - Main entry point
 
 Individual chapters in `docs/`:
-1. [`01_系统架构.md`](./docs/01_系统架构.md) - System architecture, data flow, tech stack
+1. [`01_系统架构.md`](./docs/01_系统架构.md) - Four-layer system architecture, data flow, tech stack
 2. [`02_硬件接口层.md`](./docs/02_硬件接口层.md) - Serial communication, camera driver
-3. [`03_感知层.md`](./docs/03_感知层.md) - Armor detection, tracking, ballistics (18KB, most detailed)
+3. [`03_感知层.md`](./docs/03_感知层.md) - sp_vision_25 perception (legacy `pb2025_rm_vision` in appendix)
 4. [`04_导航层.md`](./docs/04_导航层.md) - Point-LIO, localization, Nav2
-5. [`05_决策层.md`](./docs/05_决策层.md) - Behavior tree framework, nodes
-6. [`06_ROS话题详解.md`](./docs/06_ROS话题详解.md) - All topics and message types
-7. [`07_参数配置.md`](./docs/07_参数配置.md) - Parameter tuning guide
-8. [`08_运行与调试.md`](./docs/08_运行与调试.md) - Launch, debug, troubleshooting (13KB)
+5. [`05_决策层.md`](./docs/05_决策层.md) - Behavior tree (navigation/tactics only — no shoot control)
+6. [`06_ROS话题详解.md`](./docs/06_ROS话题详解.md) - Topics and message types (sp_vision mode primary)
+7. [`07_参数配置.md`](./docs/07_参数配置.md) - sp_vision YAML + node_params tuning
+8. [`08_运行与调试.md`](./docs/08_运行与调试.md) - Launch, debug, troubleshooting
+9. [`09_sp_vision_25分析.md`](./docs/09_sp_vision_25分析.md) - sp_vision_25 deep dive (MPC, algorithms)
+12. [`12_新项目安装教程.md`](./docs/12_新项目安装教程.md) - Fresh-environment install guide
+13. [`13_四元数转换与参数调优.md`](./docs/13_四元数转换与参数调优.md) - sp_vision_25 hand-eye calibration & quaternion tuning
 
 **When to use**: For implementation details, algorithms, parameter tuning, or troubleshooting.
 
@@ -313,35 +332,44 @@ Individual chapters in `docs/`:
 
 ### Source Code by Layer
 - **Hardware**: `src/standard_robot_pp_ros2/`, `src/dependencies/hik_camera_ros2_driver/`
-- **Vision**: `src/pb2025_rm_vision/armor_detector_opencv/`, `armor_detector_openvino/`, `armor_tracker/`, `projectile_motion/`
+- **Vision (current)**: `src/sp_vision_25/`, `src/sp_vision_ros2_adapter/`
+- **Vision (legacy, deprecated)**: `src/pb2025_rm_vision/armor_detector_opencv/`, `armor_detector_openvino/`, `armor_tracker/`, `projectile_motion/`
 - **Navigation**: `src/pb2025_sentry_nav/point_lio/`, `small_gicp_relocalization/`, `terrain_analysis/`, `pb_nav2_plugins/`
 - **Decision**: `src/pb2025_sentry_behavior/`
 - **Interfaces**: `src/interfaces/pb_rm_interfaces/`, `src/interfaces/auto_aim_interfaces/`
 
 ### Launch Files
-- Vision: `src/pb2025_rm_vision/pb2025_vision_bringup/launch/rm_vision_reality_launch.py`
+- Vision (current): `src/sp_vision_25/launch/sp_vision_25.launch.py`
+- Vision (legacy): `src/pb2025_rm_vision/pb2025_vision_bringup/launch/rm_vision_reality_launch.py`
 - Navigation: `src/pb2025_sentry_nav/pb2025_nav_bringup/launch/rm_navigation_reality_launch.py`
 - Behavior: `src/pb2025_sentry_behavior/launch/pb2025_sentry_behavior_launch.py`
 
 ---
 
-## 📡 Core ROS Topics (16 Most Important)
+## 📡 Core ROS Topics
 
 ### Hardware Layer
 | Topic | Type | Hz | Publisher | Subscribers | Purpose |
 |-------|------|----|-----------| ------------|---------|
-| `/front_industrial_camera/image` | sensor_msgs/Image | 165 | camera | detector | Camera images |
-| `/serial/gimbal_joint_state` | sensor_msgs/JointState | 100 | serial | tracker | Gimbal state |
+| `/serial/gimbal_joint_state` | sensor_msgs/JointState | 100 | serial | sp_vision_25 (legacy: tracker) | Gimbal state |
 | `/referee/robot_status` | pb_rm_interfaces/RobotStatus | 10 | serial | BT | Robot HP, ammo, heat |
 | `/referee/game_status` | pb_rm_interfaces/GameStatus | 10 | serial | BT | Game phase, time |
+| `/front_industrial_camera/image` *(legacy only)* | sensor_msgs/Image | 165 | hik_camera | armor_detector | Camera images (deprecated path) |
 
-### Perception Layer
+### Perception Layer (sp_vision_25 mode — current)
 | Topic | Type | Hz | Publisher | Subscribers | Purpose |
 |-------|------|----|-----------| ------------|---------|
-| `/detector/armors` | auto_aim_interfaces/Armors | ~100 | detector | tracker | Detected armors |
-| `/tracker/target` | auto_aim_interfaces/Target | ~100 | tracker | projectile, BT | Tracking target (pos + vel) |
-| `/cmd_gimbal` | pb_rm_interfaces/GimbalCmd | ~100 | projectile | serial | Gimbal commands |
-| `/cmd_shoot` | example_interfaces/UInt8 | ~100 | projectile | serial | Shoot command |
+| `/cmd_gimbal` | pb_rm_interfaces/GimbalCmd | ~100 | sp_vision_25 | serial | Gimbal commands (autonomous) |
+| `/cmd_shoot` | example_interfaces/UInt8 | ~100 | sp_vision_25 | serial | Shoot command (autonomous) |
+| `/sentry_debug/image` *(when debug enabled)* | sensor_msgs/Image | ~100 | sp_vision_25 | rqt_image_view | Debug visualization |
+
+### Perception Layer (legacy `pb2025_rm_vision` — deprecated, only when `use_sp_vision:=False`)
+| Topic | Type | Hz | Publisher | Subscribers | Purpose |
+|-------|------|----|-----------| ------------|---------|
+| `/detector/armors` | auto_aim_interfaces/Armors | ~100 | armor_detector | armor_tracker | Detected armors |
+| `/tracker/target` | auto_aim_interfaces/Target | ~100 | armor_tracker | projectile_motion | Tracking target |
+| `/cmd_gimbal` | pb_rm_interfaces/GimbalCmd | ~100 | projectile_motion | serial | Gimbal commands |
+| `/cmd_shoot` | example_interfaces/UInt8 | ~100 | projectile_motion | serial | Shoot command |
 
 ### Navigation Layer
 | Topic | Type | Hz | Publisher | Subscribers | Purpose |
@@ -362,43 +390,31 @@ Individual chapters in `docs/`:
 
 ---
 
-## 🤖 Core Nodes (16 Essential)
+## 🤖 Core Nodes
 
 ### Hardware Layer
 1. **standard_robot_pp_ros2** (`StandardRobotPpRos2Node`)
    - Package: `standard_robot_pp_ros2`
-   - Publishes: `/referee/*` (10 topics), `/serial/*` (4 topics)
-   - Subscribes: `/cmd_vel`, `/cmd_gimbal_joint`, `/cmd_shoot`
+   - Publishes: `/referee/*`, `/serial/*`
+   - Subscribes: `/cmd_vel`, `/cmd_gimbal`, `/cmd_shoot`
    - Function: Serial communication with STM32, referee system data
 
-2. **hik_camera_ros2_driver** (`hik_camera_ros2_driver`)
+2. **hik_camera_ros2_driver** *(legacy mode only)*
    - Package: `hik_camera_ros2_driver`
    - Publishes: `/{camera_name}/image`, `/camera_info`
-   - Function: HikRobot industrial camera driver (165Hz)
+   - Function: HikRobot camera driver (NOT used in sp_vision_25 mode — sp_vision opens the camera natively)
 
-### Perception Layer
-3. **armor_detector_opencv** (`armor_detector_opencv`)
-   - Package: `armor_detector_opencv`
-   - Publishes: `/detector/armors`, `/detector/marker`
-   - Subscribes: `/{camera_name}/image`, `/camera_info`
-   - Function: Traditional CV armor detection
+### Perception Layer (current: sp_vision_25)
+3. **sp_vision_25** (single executable, no ROS2 node lifecycle)
+   - Package: `sp_vision_25`
+   - Publishes: `/cmd_gimbal`, `/cmd_shoot`, `/sentry_debug/image` (debug)
+   - Subscribes: `/serial/gimbal_joint_state` (or reads quaternion via cboard CAN, depending on config)
+   - Function: native-SDK image capture → YOLO detection → EKF tracking → ballistic solve → autonomous shoot decision
 
-4. **armor_detector_openvino** (`armor_detector_openvino`)
-   - Package: `armor_detector_openvino`
-   - Same interface as opencv version
-   - Function: Deep learning armor detection (OpenVINO)
-
-5. **armor_tracker** (`armor_tracker`)
-   - Package: `armor_tracker`
-   - Publishes: `/tracker/target`, `/tracker/info`
-   - Subscribes: `/detector/armors` (with tf2 filter)
-   - Function: EKF-based target state estimation
-
-6. **projectile_motion** (`projectile_motion_node`)
-   - Package: `projectile_motion`
-   - Publishes: `/cmd_gimbal`, `/cmd_shoot`
-   - Subscribes: `/tracker/target` (with tf2 filter)
-   - Function: Ballistic calculation and gimbal control
+### Perception Layer (legacy `pb2025_rm_vision`, deprecated)
+4. **armor_detector_opencv / armor_detector_openvino** — publishes `/detector/armors`, subscribes `/{camera_name}/image`
+5. **armor_tracker** — EKF target estimation, publishes `/tracker/target`
+6. **projectile_motion_node** — ballistic + gimbal/shoot output, publishes `/cmd_gimbal`, `/cmd_shoot`
 
 ### Navigation Layer
 7. **livox_ros_driver2** (`livox_lidar_publisher`)
@@ -430,15 +446,15 @@ Individual chapters in `docs/`:
     - Function: Path planning and motion control
 
 ### Decision Layer
-12. **pb2025_sentry_behavior_server** (`pb2025_sentry_behavior_server`)
+12. **pb2025_sentry_behavior_server**
     - Package: `pb2025_sentry_behavior`
-    - Global Blackboard subscribes: `/referee/*`, `/tracker/target`, `/global_costmap/costmap`
+    - Global Blackboard subscribes: `/referee/*`, `/global_costmap/costmap` (in sp_vision mode `/tracker/target` is unavailable; the BT does not need it)
     - Publishes: `/goal_pose`, `/cmd_vel` (via action nodes)
-    - Function: BehaviorTree.CPP execution engine
+    - Function: BehaviorTree.CPP execution engine — navigation/tactics only
 
 **Behavior Tree Nodes** (loaded as plugins):
-- Conditions: `IsDetectEnemy`, `IsAttacked`, `IsGameStatus`, `IsRfidDetected`, `IsStatusOK`
-- Actions: `CalculateAttackPose`, `PubNav2Goal`, `PubTwist`, `PubGimbalAbsolute`, `PubGimbalVelocity`
+- Conditions: `IsAttacked`, `IsGameStatus`, `IsRfidDetected`, `IsStatusOK`, (legacy: `IsDetectEnemy` requires `/detector/armors`)
+- Actions: `PubNav2Goal`, `PubTwist`, `PubGimbalAbsolute`, `PubGimbalVelocity`, (legacy: `CalculateAttackPose` requires `/tracker/target`)
 
 ---
 
@@ -467,10 +483,14 @@ ros2 run tf2_tools view_frames
 # Serial (check /dev/ttyACM* first)
 ros2 launch standard_robot_pp_ros2 standard_robot_pp_ros2.launch.py params_file:=<path>
 
-# Camera (check lsusb | grep HIK first)
+# sp_vision_25 (current main perception — opens camera natively)
+ros2 launch sp_vision_25 sp_vision_25.launch.py \
+  config_path:=$(ros2 pkg prefix sp_vision_25)/share/sp_vision_25/configs/sentry.yaml
+
+# Camera driver (legacy mode only — sp_vision conflicts with this)
 ros2 launch hik_camera_ros2_driver hik_camera_launch.py params_file:=<path>
 
-# Vision only
+# Legacy vision pipeline (deprecated)
 ros2 launch pb2025_vision_bringup rm_vision_reality_launch.py detector:=opencv use_rviz:=True
 
 # Navigation only
@@ -512,47 +532,71 @@ ros2 launch pb2025_sentry_bringup bringup.launch.py \
 
 ## 🔧 Critical Parameters Quick Reference
 
-Located in: `src/pb2025_sentry_bringup/params/node_params.yaml`
+Two configuration sources depending on vision mode:
+- **sp_vision_25 (recommended)**: `src/sp_vision_25/configs/sentry.yaml` (standalone YAML)
+- **Everything else**: `src/pb2025_sentry_bringup/params/node_params.yaml` (ROS2 params)
 
-### Most Frequently Tuned (Top 20)
+### sp_vision_25 YAML (current perception tuning)
+
+**Detection / classification**
+- `enemy_color`: `"red"` or `"blue"`
+- `yolo_name`: `yolov5` / `yolov8` / `yolo11`
+- `device`: OpenVINO device (`CPU`, `GPU`, `AUTO`)
+- `min_confidence`: detection confidence (default `0.8`)
+- `use_traditional`: enable traditional CV fallback (default `true`)
+
+**Camera (industrial / HikRobot)**
+- `exposure_ms`: exposure in ms (default `8`)
+- `gain`: sensor gain (default `16.9`)
+- `vid_pid`: USB VID:PID for camera selection
+
+**Tracker / aimer**
+- `min_detect_count`: frames before tracker enters TRACKING (default `5`)
+- `max_temp_lost_count`: frames in TEMP_LOST before drop (default `25`)
+- `yaw_offset`, `pitch_offset`: gimbal calibration in degrees — must calibrate per robot
+- `decision_speed`: rad/s threshold for high/low-speed prediction switch
+- `high_speed_delay_time`, `low_speed_delay_time`: prediction lead time (s)
+- `spin_center_track_speed`, `spin_fire_angle`: anti-top center-aim parameters
+
+**Shooter**
+- `first_tolerance`, `second_tolerance`: angular shoot tolerance (deg) for near/far
+- `auto_fire`: whether sp_vision controls `/cmd_shoot` autonomously
+
+**Debug**
+- `debug.enable_visualization`: publish `/sentry_debug/image` (true/false)
+- `debug.enable_recorder`: write video to `records/`
+
+**Hand-eye calibration**
+- `R_camera2gimbal` (3x3 row-major), `camera_matrix`, `distort_coeffs`, `R_gimbal2imubody`
+
+### node_params.yaml (everything else)
 
 **Hardware**
 - `standard_robot_pp_ros2.device_name`: Serial port (default: `/dev/ttyACM0`)
-- `hik_camera_ros2_driver.acquisition_frame_rate`: Camera FPS (default: `165.0`)
-- `hik_camera_ros2_driver.exposure_time`: Exposure μs (default: `5000`)
-- `hik_camera_ros2_driver.gain`: Camera gain dB (default: `12.0`)
-
-**Vision Detection**
-- `armor_detector_opencv.detect_color`: 0=red, 1=blue (default: `0`)
-- `armor_detector_opencv.binary_thres`: Binarization threshold (default: `80`, tune: 60-120)
-- `armor_detector_opencv.classifier_threshold`: Confidence threshold (default: `0.25`, tune: 0.2-0.6)
-- `armor_detector_openvino.detector.confidence_threshold`: Same for OpenVINO (default: `0.25`)
-
-**Vision Tracking**
-- `armor_tracker.ekf.sigma2_q_xyz`: Position process noise (default: `0.05`, ↓=trust measurement)
-- `armor_tracker.tracker.tracking_thres`: Frames to start tracking (default: `5`)
-- `armor_tracker.tracker.lost_time_thres`: Time before losing track (default: `1.0` s)
-
-**Ballistics**
-- `projectile_motion.projectile.offset_pitch`: Pitch offset rad (default: `0.0`, calibrate!)
-- `projectile_motion.projectile.offset_yaw`: Yaw offset rad (default: `0.0`, calibrate!)
-- `projectile_motion.projectile.offset_time`: Prediction time s (default: `0.1`)
-- `projectile_motion.projectile.initial_speed`: Projectile speed m/s (default: `21.5`)
+- `hik_camera_ros2_driver.*`: Only used in legacy mode (sp_vision opens camera natively)
 
 **Navigation**
 - `pointlio_mapping.mapping.filter_size_surf`: Point cloud filter (default: `0.2`, ↑=faster)
 - `controller_server.FollowPath.max_linear_vel`: Max speed m/s (default: `2.0`)
 - `controller_server.FollowPath.kp_rho`: Distance gain (default: `1.0`, ↓ if oscillating)
+- `global_costmap.inflation_layer.inflation_radius`: Obstacle inflation
 
 **Decision**
 - `pb2025_sentry_behavior_server.tick_frequency`: BT tick Hz (default: `5`)
 
-**Tuning scenarios**:
-- Bright environment → increase `binary_thres` to 100-120
-- Dark environment → decrease `binary_thres` to 60-80, increase `gain`
-- Tracking jitter → decrease `ekf.sigma2_q_xyz` to 0.03
-- Missing detections → decrease `classifier_threshold` to 0.2
-- Path oscillation → decrease `kp_rho` and `kp_alpha`
+### Legacy `pb2025_rm_vision` parameters *(only when `use_sp_vision:=False`)*
+- `armor_detector_opencv.detect_color`: 0=red, 1=blue
+- `armor_detector_opencv.binary_thres`: Binarization threshold (60-120)
+- `armor_detector_opencv.classifier_threshold`: Confidence threshold (0.2-0.6)
+- `armor_tracker.ekf.sigma2_q_xyz`, `tracker.tracking_thres`, `tracker.lost_time_thres`
+- `projectile_motion.projectile.offset_pitch/offset_yaw/offset_time/initial_speed`
+
+**Tuning scenarios (sp_vision mode)**:
+- Aim consistently off in pitch/yaw → calibrate `yaw_offset` / `pitch_offset` (degrees)
+- Misses moving targets → tune `low_speed_delay_time` / `high_speed_delay_time`
+- Detector misses targets → lower `min_confidence` toward 0.7
+- Image too dark/bright → adjust `exposure_ms` and `gain`
+- Path oscillation (navigation) → decrease `kp_rho` and `kp_alpha`
 
 ---
 
@@ -562,11 +606,13 @@ Located in: `src/pb2025_sentry_bringup/params/node_params.yaml`
 ```
 src/
 ├── interfaces/                    # Message definitions
-│   ├── pb_rm_interfaces/         # Referee system, gimbal control (9 msg types)
-│   └── auto_aim_interfaces/      # Armor detection, tracking (8 msg types)
+│   ├── pb_rm_interfaces/         # Referee system, gimbal control
+│   └── auto_aim_interfaces/      # Armor detection, tracking (legacy vision)
 │
 ├── standard_robot_pp_ros2/       # Serial communication node
-├── pb2025_rm_vision/             # Vision modules
+├── sp_vision_25/                 # **Current main perception (single-process)**
+├── sp_vision_ros2_adapter/       # Optional ROS2 bridge utilities for sp_vision_25
+├── pb2025_rm_vision/             # **LEGACY (deprecated, use_sp_vision:=False only)**
 │   ├── armor_detector_opencv/
 │   ├── armor_detector_openvino/
 │   ├── armor_tracker/
@@ -579,19 +625,19 @@ src/
 │   ├── pb_nav2_plugins/          # Custom Nav2 plugins
 │   └── pb2025_nav_bringup/
 │
-├── pb2025_sentry_behavior/       # Behavior tree nodes
+├── pb2025_sentry_behavior/       # Behavior tree (navigation/tactics, no shoot)
 │   ├── include/pb2025_sentry_behavior/
-│   ├── src/                      # Condition/Action node implementations
-│   └── trees/                    # XML behavior trees
+│   ├── plugins/                  # Condition / Action node plugins
+│   └── behavior_trees/           # XML behavior trees
 │
 ├── pb2025_sentry_bringup/        # Integration
 │   ├── launch/bringup.launch.py
-│   ├── params/node_params.yaml   # **CENTRAL CONFIG**
+│   ├── params/node_params.yaml   # **CENTRAL CONFIG (non-vision and legacy vision)**
 │   ├── map/                      # .yaml + .pgm map files
 │   └── pcd/                      # .pcd point cloud maps
 │
 └── dependencies/                 # Third-party packages
-    ├── hik_camera_ros2_driver/
+    ├── hik_camera_ros2_driver/   # Used only in legacy vision mode
     ├── rmoss_core/
     ├── BehaviorTree.ROS2/
     └── ...
@@ -599,8 +645,10 @@ src/
 
 ### Finding Code Locations
 - **Add new message**: `src/interfaces/{package}/msg/NewMessage.msg`
-- **Modify detector**: `src/pb2025_rm_vision/armor_detector_opencv/src/detector_node.cpp`
-- **Add BT node**: `src/pb2025_sentry_behavior/src/action_nodes/` or `condition_nodes/`
+- **Modify sp_vision detection / tracker / aimer**: `src/sp_vision_25/src/`
+- **Tune sp_vision**: `src/sp_vision_25/configs/sentry.yaml`
+- **Modify legacy detector (deprecated)**: `src/pb2025_rm_vision/armor_detector_opencv/src/detector_node.cpp`
+- **Add BT node**: `src/pb2025_sentry_behavior/plugins/action/` or `plugins/condition/`
 - **Tune Nav2**: `src/pb2025_sentry_bringup/params/node_params.yaml` (search `controller_server` or `planner_server`)
 - **Add custom Nav2 plugin**: `src/pb2025_sentry_nav/pb_nav2_plugins/`
 
@@ -628,8 +676,9 @@ src/
    - Example: `world:=arena` requires `arena.yaml`, `arena.pgm`, `arena.pcd`
 
 5. **Coordinate Frames**
-   - Vision tracking: `gimbal_pitch_odom` frame
+   - sp_vision_25: works in its own internal `gimbal` / `imu_body` frames; calibrated via `R_camera2gimbal` and `R_gimbal2imubody` in YAML (see `docs/13`)
    - Navigation: `map` → `odom` → `base_footprint` → `gimbal_yaw`
+   - Legacy vision tracking: `gimbal_pitch_odom`
    - Check TF: `ros2 run tf2_ros tf2_echo map base_footprint`
 
 ### Common Pitfalls
@@ -637,30 +686,32 @@ src/
 - **Serial port permission**: Add user to dialout group: `sudo usermod -a -G dialout $USER`
 - **OpenVINO not found**: Check `echo $INTEL_OPENVINO_DIR` is set
 - **TF lookup failed**: Ensure `robot_state_publisher` is running
-- **Detector sees nothing**: Enable `debug: true`, check `/detector/binary_img`
+- **sp_vision sees nothing**: Verify `enemy_color`, exposure, and `min_confidence` in `sentry.yaml`; enable `debug.enable_visualization`
+- **Both vision systems start (USB conflict)**: Don't run sp_vision_25 and `hik_camera_ros2_driver` simultaneously — sp_vision needs exclusive camera access
 
 ---
 
 ## 🔍 Troubleshooting Quick Guide
 
-**Vision not detecting**: Check `binary_thres` (80±20), `classifier_threshold` (0.25±0.15), enable debug mode
-**Tracking lost frequently**: Increase `lost_time_thres` to 1.5s, check `max_match_distance`
+**sp_vision not detecting / aiming wrong**: Check `enemy_color`, `exposure_ms`, `gain`, `yaw_offset`, `pitch_offset` in `src/sp_vision_25/configs/sentry.yaml`; enable `debug.enable_visualization` and view `/sentry_debug/image`
 **Navigation stuck**: Check costmap visualization, increase `inflation_radius`, verify map loaded
 **Behavior tree not ticking**: Verify referee system data publishing (`ros2 topic hz /referee/game_status`)
 **Serial connection failed**: Check `ls -l /dev/ttyACM*`, verify baud rate 115200
-**Camera not streaming**: Check `lsusb | grep HIK`, verify USB 3.0 connection
+**Camera open failed (sp_vision)**: Check `lsusb | grep -i hik`, verify USB 3.0, ensure `hik_camera_ros2_driver` is NOT running
+**Legacy mode no detection**: Check `binary_thres` (80±20), `classifier_threshold` (0.25±0.15), enable debug mode
 
-**For detailed troubleshooting**: See [`docs/08_运行与调试.md`](./docs/08_运行与调试.md) (13KB, comprehensive)
+**For detailed troubleshooting**: See [`docs/08_运行与调试.md`](./docs/08_运行与调试.md)
 
 ---
 
 ## 📖 When Working on Specific Tasks
 
-- **Adding new vision algorithm**: Read `docs/03_感知层.md` (algorithms, data flow)
+- **Adding new vision algorithm**: Read `docs/03_感知层.md` (sp_vision_25 architecture) and `docs/09_sp_vision_25分析.md` (algorithms, MPC)
+- **Tuning sp_vision**: Read `docs/07_参数配置.md` + `docs/13_四元数转换与参数调优.md`
 - **Tuning navigation**: Read `docs/04_导航层.md` + `docs/07_参数配置.md`
-- **Creating behavior tree logic**: Read `docs/05_决策层.md` (node types, XML format)
-- **Understanding message types**: Read `docs/06_ROS话题详解.md` (all 23 message types)
-- **Debugging system issues**: Read `docs/08_运行与调试.md` (step-by-step guides)
+- **Creating behavior tree logic**: Read `docs/05_决策层.md` (node types, XML format) — remember BT does not control shooting
+- **Understanding message types**: Read `docs/06_ROS话题详解.md`
+- **Debugging system issues**: Read `docs/08_运行与调试.md`
 - **Modifying launch files**: Check `src/pb2025_sentry_bringup/launch/` + existing launch args
 
 **Quick search tip**: All docs have table of contents at the top for fast navigation.

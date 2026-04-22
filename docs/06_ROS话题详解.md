@@ -115,7 +115,9 @@ bool enemy_supply_zone_non_exchange            # 敌方补给区
 
 ## 3. 视觉消息
 
-### 3.1 Armor
+> ⚠️ 本节中 `Armor`、`Armors`、`Target` 类型仅在**旧 `pb2025_rm_vision` 模式**（`use_sp_vision:=False`）下产生。在当前推荐的 `sp_vision_25` 模式下，感知节点**不发布** `/detector/armors`、`/tracker/target`，而是直接输出 `/cmd_gimbal` + `/cmd_shoot`（见 §4.2 / 4.3）。
+
+### 3.1 Armor *(仅旧视觉模式)*
 
 ```
 string number                    # 装甲板数字 ("1"-"5", "outpost", "base")
@@ -124,9 +126,9 @@ float64 distance_to_image_center # 到图像中心距离
 geometry_msgs/Pose pose          # 3D位姿 (相机坐标系)
 ```
 
-### 3.2 Armors
+### 3.2 Armors *(仅旧视觉模式)*
 
-**话题**: `/detector/armors`
+**话题**: `/detector/armors`（sp_vision_25 模式下不存在）
 **频率**: ~100Hz
 
 ```
@@ -134,9 +136,9 @@ std_msgs/Header header
 Armor[] armors                   # 检测到的装甲板数组
 ```
 
-### 3.3 Target
+### 3.3 Target *(仅旧视觉模式)*
 
-**话题**: `/tracker/target`
+**话题**: `/tracker/target`（sp_vision_25 模式下不存在）
 **频率**: ~100Hz
 
 ```
@@ -181,6 +183,7 @@ geometry_msgs/Vector3 angular    # 角速度 (rad/s)
 **话题**: `/cmd_gimbal`
 **类型**: `pb_rm_interfaces/GimbalCmd`
 **频率**: ~100Hz
+**发布者**: sp_vision_25（主方案）/ projectile_motion（旧模式）
 
 ```
 uint8 ctrl_mode                  # 控制模式
@@ -198,6 +201,7 @@ float64 velocity_ref_yaw         # yaw角速度(rad/s)
 **话题**: `/cmd_shoot`
 **类型**: `example_interfaces/UInt8`
 **频率**: ~100Hz
+**发布者**: sp_vision_25（主方案）/ projectile_motion（旧模式）
 
 ```
 uint8 data                       # 1=射击, 0=停止
@@ -213,13 +217,11 @@ uint8 data                       # 1=射击, 0=停止
 graph TB
     subgraph 硬件层
         SERIAL[serial节点] -->|/referee/*| BB[全局黑板]
-        CAM[camera节点] -->|/image| DET
     end
 
-    subgraph 感知层
-        DET[detector节点] -->|/detector/armors| TRACK
-        TRACK[tracker节点] -->|/tracker/target| PROJ
-        PROJ[projectile节点] -->|/cmd_gimbal| SERIAL
+    subgraph 感知层（sp_vision_25 主方案）
+        SPV[sp_vision_25<br/>相机直采+YOLO+EKF+弹道+射击] -->|/cmd_gimbal| SERIAL
+        SPV -->|/cmd_shoot| SERIAL
     end
 
     subgraph 导航层
@@ -231,7 +233,6 @@ graph TB
 
     subgraph 决策层
         BB -->|黑板数据| BT[behavior_tree节点]
-        TRACK -->|/tracker/target| BB
         NAV2 -->|/costmap| BB
         BT -->|/goal_pose| NAV2
         BT -->|/cmd_vel| SERIAL
@@ -242,13 +243,31 @@ graph TB
     classDef navClass fill:#E5CCFF,stroke:#333,stroke-width:2px
     classDef decisionClass fill:#FFCCCC,stroke:#333,stroke-width:2px
 
-    class SERIAL,CAM hardwareClass
-    class DET,TRACK,PROJ perceptionClass
+    class SERIAL hardwareClass
+    class SPV perceptionClass
     class LIDAR,PL,TA,NAV2 navClass
     class BB,BT decisionClass
 ```
 
+> 旧 `pb2025_rm_vision` 链路（`hik_camera → detector → tracker → projectile`）仅在 `use_sp_vision:=False` 时启动。
+
 ### 5.2 关键话题列表
+
+#### sp_vision_25 主方案（当前推荐）
+
+| 话题名 | 发布者 | 订阅者 | 频率 | 说明 |
+|--------|--------|--------|------|------|
+| `/cmd_gimbal` | sp_vision_25 | serial | ~100Hz | 云台指令（自主） |
+| `/cmd_shoot` | sp_vision_25 | serial | ~100Hz | 射击指令（自主） |
+| `/sentry_debug/image` *(debug 启用时)* | sp_vision_25 | rqt_image_view | ~100Hz | 调试可视化 |
+| `/livox/lidar` | lidar | point_lio | 20Hz | 点云数据 |
+| `/Odometry` | point_lio | nav2 | 20Hz | 里程计 |
+| `/terrain_map` | terrain | nav2 | 5Hz | 地形地图 |
+| `/cmd_vel` | nav2, BT | serial | 20Hz | 底盘速度 |
+| `/goal_pose` | BT | nav2 | 变化时 | 导航目标 |
+| `/referee/*` | serial | BT | 10Hz | 裁判系统 |
+
+#### 附录：旧 pb2025_rm_vision 模式（`use_sp_vision:=False`）
 
 | 话题名 | 发布者 | 订阅者 | 频率 | 说明 |
 |--------|--------|--------|------|------|
@@ -256,12 +275,7 @@ graph TB
 | `/detector/armors` | detector | tracker | ~100Hz | 检测装甲板 |
 | `/tracker/target` | tracker | projectile, BT | ~100Hz | 追踪目标 |
 | `/cmd_gimbal` | projectile | serial | ~100Hz | 云台指令 |
-| `/livox/lidar` | lidar | point_lio | 20Hz | 点云数据 |
-| `/Odometry` | point_lio | nav2 | 20Hz | 里程计 |
-| `/terrain_map` | terrain | nav2 | 5Hz | 地形地图 |
-| `/cmd_vel` | nav2, BT | serial | 20Hz | 底盘速度 |
-| `/goal_pose` | BT | nav2 | 变化时 | 导航目标 |
-| `/referee/*` | serial | BT | 10Hz | 裁判系统 |
+| `/cmd_shoot` | projectile | serial | ~100Hz | 射击指令 |
 
 ---
 

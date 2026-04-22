@@ -4,71 +4,35 @@
 
 本手册提供了完整的系统架构、节点详解、话题说明、参数配置和调试指南。
 
+> **当前感知层主方案**：[sp_vision_25](./src/sp_vision_25/) — 单体高性能视觉系统，原生访问相机硬件，
+> 内置 YOLO 检测、EKF 跟踪、弹道解算与自主射击决策，直接发布 `/cmd_gimbal` 与 `/cmd_shoot`。
+> 旧的 `pb2025_rm_vision`（armor_detector / armor_tracker / projectile_motion）已**废弃保留**，
+> 仅在 `use_sp_vision:=False` 时启用，用于回归对比，不再作为主线维护。
+
 ## 📚 文档导航
 
 ### 基础架构
-- **[01. 系统架构总览](./docs/01_系统架构.md)** - 整体架构、数据流、模块关系
-  - 五层架构设计
-  - 系统数据流向图
-  - 关键技术栈
+- **[01. 系统架构总览](./docs/01_系统架构.md)** — 四层架构、数据流、关键技术栈
 
 ### 功能层详解
-- **[02. 硬件接口层](./docs/02_硬件接口层.md)** - 串口通信、相机驱动
-  - 串口通信节点 (standard_robot_pp_ros2)
-  - 工业相机驱动节点 (hik_camera_ros2_driver)
-
-- **[03. 感知层](./docs/03_感知层.md)** - 视觉检测与追踪
-  - 装甲板检测节点 (OpenCV/OpenVINO)
-  - 目标追踪节点 (armor_tracker)
-  - 弹道计算节点 (projectile_motion)
-
-- **[04. 导航层](./docs/04_导航层.md)** - 定位、建图与路径规划
-  - LiDAR驱动与里程计 (point_lio)
-  - 全局重定位 (small_gicp_relocalization)
-  - 地形分析 (terrain_analysis)
-  - Nav2导航栈配置
-
-- **[05. 决策层](./docs/05_决策层.md)** - 行为树决策框架
-  - 行为树服务器
-  - 条件节点详解
-  - 动作节点详解
+- **[02. 硬件接口层](./docs/02_硬件接口层.md)** — 串口通信 (standard_robot_pp_ros2)、工业相机驱动 (hik_camera_ros2_driver)
+- **[03. 感知层](./docs/03_感知层.md)** — sp_vision_25 主感知系统；附录保留旧 pb2025_rm_vision 概览
+- **[04. 导航层](./docs/04_导航层.md)** — Point-LIO 定位、small_gicp 重定位、地形分析、Nav2
+- **[05. 决策层](./docs/05_决策层.md)** — BehaviorTree.CPP 行为树（仅负责导航与战术决策）
 
 ### 开发指南
-- **[06. ROS话题详解](./docs/06_ROS话题详解.md)** - 所有话题和消息类型
-  - 自定义消息接口
-  - 话题订阅/发布关系
-  - 裁判系统消息详解
+- **[06. ROS话题详解](./docs/06_ROS话题详解.md)** — 自定义消息、当前感知/导航/决策话题
+- **[07. 参数配置指南](./docs/07_参数配置.md)** — sp_vision_25 YAML、`node_params.yaml` 调优
+- **[08. 运行与调试指南](./docs/08_运行与调试.md)** — 启动、单模块调试、Rosbag 工作流、排错
 
-- **[07. 参数配置指南](./docs/07_参数配置.md)** - 参数说明与调优
-  - 中心配置文件结构
-  - 各模块参数详解
-  - 调试参数建议
+### 视觉系统专题
+- **[09. sp_vision_25 深度分析](./docs/09_sp_vision_25分析.md)** ⭐ — 项目结构、MPC 轨迹规划、算法详解
+- **[13. 四元数转换与参数调优](./docs/13_四元数转换与参数调优.md)** — sp_vision_25 手眼标定与坐标变换调优
 
-- **[08. 运行与调试指南](./docs/08_运行与调试.md)** - 启动、测试、问题排查
-  - 完整系统启动
-  - 单模块调试
-  - Rosbag工作流
-
-### 高级集成
-- **[11. sp_vision_25集成说明](./docs/11_sp_vision_25集成说明.md)** - 高性能视觉系统集成
-  - ROS2接口实现（ROS2Camera、ROS2CBoard）
-  - 编译与运行说明
-  - 与pb2025系统对比
-  - 性能优化与故障排查
-
-### 视觉系统替换
-- **[09. sp_vision_25 分析](./docs/09_sp_vision_25分析.md)** - 开源视觉项目深度分析 ⭐
-  - 项目结构与架构
-  - 核心模块详解（MPC轨迹规划）
-  - 数据流与算法分析
-  - 与现有系统对比
-
-- **[10. 视觉系统替换方案](./docs/10_视觉系统替换方案.md)** - 替换方案对比与实施指南 ⭐
-  - 四种替换方案详解
-  - 优缺点对比分析
-  - 实施步骤与路线图
-  - 风险管理与决策树
-  - 常见问题解决
+### 工程参考
+- **[12. 新项目安装教程](./docs/12_新项目安装教程.md)** — Ubuntu/ROS 2 全新环境部署
+- **[相机标定与测试指南](./相机标定与测试指南.md)** — sp_vision_25 相机标定流程
+- **[00. Mermaid 颜色方案](./docs/00_Mermaid颜色方案.md)** — 文档配图配色标准
 
 ## 🚀 快速开始
 
@@ -77,80 +41,98 @@
 # 安装依赖
 rosdep install -r --from-paths src --ignore-src --rosdistro $ROS_DISTRO -y
 
-# 构建工作空间
+# 构建工作空间（始终带 --symlink-install）
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --parallel-workers 10
+source install/setup.bash
 ```
 
-### 启动系统
+### 启动系统（推荐：sp_vision_25）
 ```bash
-# 启动完整系统
 ros2 launch pb2025_sentry_bringup bringup.launch.py \
   world:=<YOUR_WORLD_NAME> \
+  use_sp_vision:=True \
+  sp_vision_config:=sentry.yaml \
   use_rviz:=True \
   params_file:=$(pwd)/src/pb2025_sentry_bringup/params/node_params.yaml
+```
+
+> 启用 `use_sp_vision:=True` 时，`hik_camera_ros2_driver` 不会启动 — sp_vision_25 直接独占相机硬件。
+
+### 兼容模式（旧 pb2025_rm_vision，已废弃）
+```bash
+ros2 launch pb2025_sentry_bringup bringup.launch.py \
+  world:=<YOUR_WORLD_NAME> \
+  use_sp_vision:=False \
+  detector:=opencv \
+  use_rviz:=True
 ```
 
 详细说明请参阅 **[运行与调试指南](./docs/08_运行与调试.md)**。
 
 ## 📊 系统概览
 
-### 五层架构
+### 四层架构
 ```
-┌─────────────────────────────────────────┐
-│         决策层 (Decision Layer)         │
-│    BehaviorTree.CPP 行为树框架          │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────┴───────────────────────┐
-│         导航层 (Navigation Layer)       │
-│  Point-LIO + Nav2 + 地形分析            │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────┴───────────────────────┐
-│         感知层 (Perception Layer)       │
-│  装甲板检测 + EKF追踪 + 弹道解算        │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────┴───────────────────────┐
-│      硬件接口层 (Hardware Layer)        │
-│    串口通信 + 工业相机驱动              │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│         决策层 (Decision Layer)             │
+│    BehaviorTree.CPP — 仅导航/战术决策        │
+└─────────────────┬───────────────────────────┘
+                  │ /goal_pose, /cmd_vel
+┌─────────────────┴───────────────────────────┐
+│         导航层 (Navigation Layer)           │
+│  Point-LIO + small_gicp + Nav2 + 地形分析   │
+└─────────────────┬───────────────────────────┘
+                  │ /Odometry, /cmd_vel
+┌─────────────────┴───────────────────────────┐
+│         感知层 (Perception Layer)           │
+│  sp_vision_25 — 单体程序，原生相机访问       │
+│  YOLO 检测 + EKF 跟踪 + 弹道解算 + 自主射击 │
+└─────────────────┬───────────────────────────┘
+                  │ /cmd_gimbal, /cmd_shoot
+┌─────────────────┴───────────────────────────┐
+│      硬件接口层 (Hardware Layer)            │
+│    standard_robot_pp_ros2（串口/裁判系统）  │
+└─────────────────────────────────────────────┘
 ```
+
+> **注**：集成层 `pb2025_sentry_bringup` 横跨四层，提供统一 launch 与 `node_params.yaml`。
 
 ### 关键数据流
 
-**感知流水线**：
+**感知流水线（sp_vision_25 内部）**：
 ```
-相机图像 → 装甲板检测 → 目标追踪 → 弹道计算 → 云台指令 → 嵌入式系统
+相机硬件 → YOLO 检测 → EKF 跟踪 → 弹道解算 → /cmd_gimbal + /cmd_shoot → 串口 → STM32
 ```
 
 **导航流水线**：
 ```
-LiDAR+IMU → 点云配准 → 里程计 → 地形分析 → 代价地图 → 路径规划 → 底盘指令
+LiDAR + IMU → Point-LIO → /Odometry → 地形分析 → 代价地图 → Nav2 规划/控制 → /cmd_vel → 串口
 ```
 
 **决策流水线**：
 ```
-裁判系统 + 视觉 + 导航 → 全局黑板 → 行为树 → 导航目标/速度指令
+/referee/* + /global_costmap → 全局黑板 → 行为树（5Hz Tick）→ /goal_pose · /cmd_vel
 ```
+
+> 射击决策完全由 sp_vision_25 自主完成，**不经过行为树**。
 
 ## 🛠️ 开发资源
 
 ### 外部依赖
-- **ROS2 Humble** - 机器人操作系统
-- **OpenVINO 2023.3** - 神经网络推理引擎
-- **small_gicp** - 点云配准库
-- **Ignition Fortress** - Gazebo仿真环境
-- **BehaviorTree.CPP v4** - 行为树框架
+- **ROS 2 Humble** — 机器人操作系统
+- **OpenVINO 2023.3** — sp_vision_25 与旧 OpenVINO 检测器共用的推理引擎
+- **small_gicp** — 点云配准库（重定位）
+- **Ignition Fortress** — Gazebo 仿真环境
+- **BehaviorTree.CPP v4** — 行为树框架
 
 ### 相关仓库
 - [SMBU PolarBear Robotics Team GitHub](https://github.com/SMBU-PolarBear-Robotics-Team)
-- [dependencies.repos](./dependencies.repos) - 子模块依赖列表
+- [dependencies.repos](./dependencies.repos) — 子模块依赖列表
 
 ## 📝 文档版本
 
-- **版本**: v1.0
-- **更新日期**: 2025-11-22
+- **版本**: v2.0（sp_vision_25 主线版）
+- **更新日期**: 2026-04-22
 - **适用系统**: pb2025_sentry_ws
 
 ## 🤝 贡献指南
