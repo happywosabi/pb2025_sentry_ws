@@ -14,8 +14,8 @@
 
 #include "loam_interface/loam_interface.hpp"
 
-#include "pcl_ros/transforms.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2_sensor_msgs/tf2_sensor_msgs.hpp"
 
 namespace loam_interface
 {
@@ -55,8 +55,15 @@ void LoamInterfaceNode::pointCloudCallback(const sensor_msgs::msg::PointCloud2::
 {
   // NOTE: Input point cloud message is based on the `lidar_odom`
   // Here we transform it to the REAL `odom` frame
+  geometry_msgs::msg::TransformStamped tf_stamped;
+  tf_stamped.header.stamp = msg->header.stamp;
+  tf_stamped.header.frame_id = odom_frame_;
+  tf_stamped.child_frame_id = msg->header.frame_id;
+  tf_stamped.transform = tf2::toMsg(tf_odom_to_lidar_odom_);
+
   auto out = std::make_shared<sensor_msgs::msg::PointCloud2>();
-  pcl_ros::transformPointCloud(odom_frame_, tf_odom_to_lidar_odom_, *msg, *out);
+  tf2::doTransform(*msg, *out, tf_stamped);
+  out->header.frame_id = odom_frame_;
   pcd_pub_->publish(*out);
 }
 

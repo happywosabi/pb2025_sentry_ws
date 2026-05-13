@@ -14,8 +14,8 @@
 
 #include "sensor_scan_generation/sensor_scan_generation.hpp"
 
-#include "pcl_ros/transforms.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2_sensor_msgs/tf2_sensor_msgs.hpp"
 
 namespace sensor_scan_generation
 {
@@ -81,8 +81,15 @@ void SensorScanGenerationNode::laserCloudAndOdometryHandler(
   publishOdometry(
     tf_odom_to_robot_base, odometry_msg->header.frame_id, robot_base_frame_, pcd_msg->header.stamp);
 
+  geometry_msgs::msg::TransformStamped tf_stamped;
+  tf_stamped.header.stamp = pcd_msg->header.stamp;
+  tf_stamped.header.frame_id = lidar_frame_;
+  tf_stamped.child_frame_id = pcd_msg->header.frame_id;
+  tf_stamped.transform = tf2::toMsg(tf_odom_to_lidar.inverse());
+
   sensor_msgs::msg::PointCloud2 out;
-  pcl_ros::transformPointCloud(lidar_frame_, tf_odom_to_lidar.inverse(), *pcd_msg, out);
+  tf2::doTransform(*pcd_msg, out, tf_stamped);
+  out.header.frame_id = lidar_frame_;
   pub_laser_cloud_->publish(out);
 }
 

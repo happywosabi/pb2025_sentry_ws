@@ -31,6 +31,14 @@ ament_auto_find_build_dependencies()
 
 find_package(small_gicp REQUIRED)
 
+# small_gicp installed via CMake exports the imported target `small_gicp::small_gicp`.
+# Older / source-installed versions may only provide the bare `small_gicp` library name.
+if(TARGET small_gicp::small_gicp)
+  set(SMALL_GICP_LIB small_gicp::small_gicp)
+else()
+  set(SMALL_GICP_LIB small_gicp)
+endif()
+
 ###########
 ## Build ##
 ###########
@@ -39,7 +47,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   DIRECTORY src
 )
 
-target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX small_gicp)
+target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX ${SMALL_GICP_LIB})
 
 rclcpp_components_register_node(${PROJECT_NAME}
   PLUGIN small_gicp_relocalization::SmallGicpRelocalizationNode

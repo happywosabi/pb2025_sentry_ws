@@ -18,7 +18,32 @@ find_package(Eigen3 REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
-set(OpenVINO_DIR "/opt/intel/openvino_2024.6.0/runtime/cmake/")
+# Locate OpenVINO without hardcoding a single absolute path. Allow the user to
+# override via -DOpenVINO_DIR=... or environment, otherwise probe a few common
+# install locations (apt /opt/intel package, archive install, user-local).
+if(NOT OpenVINO_DIR AND DEFINED ENV{OpenVINO_DIR})
+  set(OpenVINO_DIR "$ENV{OpenVINO_DIR}")
+endif()
+if(NOT OpenVINO_DIR AND DEFINED ENV{INTEL_OPENVINO_DIR})
+  set(OpenVINO_DIR "$ENV{INTEL_OPENVINO_DIR}/runtime/cmake")
+endif()
+if(NOT OpenVINO_DIR)
+  foreach(_ov_candidate
+      "/opt/intel/openvino_2024.6.0/runtime/cmake"
+      "/opt/intel/openvino_2024/runtime/cmake"
+      "/opt/intel/openvino_2023.3.0/runtime/cmake"
+      "/usr/lib/cmake/openvino2024.6.0"
+      "/usr/lib/cmake/openvino2024"
+      "/usr/lib/cmake/openvino2023.3.0"
+      "$ENV{HOME}/.local/openvino_2024.6.0/runtime/cmake"
+      "$ENV{HOME}/.local/openvino_2023.3.0/runtime/cmake")
+    if(EXISTS "${_ov_candidate}")
+      set(OpenVINO_DIR "${_ov_candidate}")
+      break()
+    endif()
+  endforeach()
+endif()
+message(STATUS "sp_vision_25: OpenVINO_DIR = ${OpenVINO_DIR}")
 find_package(OpenVINO REQUIRED)
 
 # ROS2 dependencies for sentry_ros2
