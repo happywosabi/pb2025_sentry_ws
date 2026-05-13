@@ -36,6 +36,28 @@
 
 ## 🚀 快速开始
 
+### 脚本安装与编译（推荐）
+仓库提供了两个 Bash 脚本，用于在 Ubuntu 22.04 + ROS 2 Humble 环境中一键准备依赖并编译工作空间：
+
+```bash
+# 1. 安装系统依赖、OpenVINO、small_gicp，并生成 scripts/env.sh
+./scripts/install_env.sh
+
+# 2. 载入环境变量（后续新终端都建议先执行）
+source scripts/env.sh
+
+# 3. 编译工作空间
+./scripts/build_ws.sh
+```
+
+`scripts/install_env.sh` 会安装基础 apt / ROS 依赖，配置 OpenVINO 与 small_gicp，并根据本机实际路径生成 `scripts/env.sh`。该脚本可重复执行，已安装的依赖会自动跳过。
+
+`scripts/build_ws.sh` 会自动 source `scripts/env.sh`，再使用 `colcon build --symlink-install` 以 Release 模式编译；需要追加 colcon 参数时，可直接跟在脚本后：
+
+```bash
+./scripts/build_ws.sh --packages-select sp_vision_25
+```
+
 ### 构建项目
 ```bash
 # 安装依赖
