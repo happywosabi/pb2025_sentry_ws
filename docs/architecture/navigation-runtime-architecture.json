@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PB2025 哨兵导航运行时架构",
+    "output": "navigation-runtime-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/happywosabi/pb2025_sentry_ws.git",
+      "revision": "37cf84ffbd8830aaeb6f10e66bf94bd9c9768867"
+    },
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "external": { "label": "外部输入 / 硬件" },
+        "backend": { "label": "ROS 2 运行时节点" },
+        "database": { "label": "运行时地图状态" }
+      }
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [48, 92],
+    "cols": 8,
+    "gapX": 70,
+    "gapY": 96,
+    "cellW": 174,
+    "cellH": 76
+  },
+  "components": [
+    {
+      "id": "mission_behavior",
+      "type": "external",
+      "label": "任务决策行为树",
+      "sublabel": "pb2025_sentry_behavior",
+      "tag": "goal_pose / cmd_spin",
+      "row": 3,
+      "col": 0,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_behavior/behavior_trees/rmul_2025.xml", "line": 45, "end_line": 56, "label": "任务目标发布" },
+        { "path": "src/pb2025_sentry_bringup/launch/bringup.launch.py", "line": 250, "end_line": 280, "label": "系统启动编排" }
+      ]
+    },
+    {
+      "id": "livox_ingress",
+      "type": "external",
+      "label": "Livox Mid-360 与驱动",
+      "sublabel": "livox_ros_driver2 · 20 Hz",
+      "tag": "PointCloud2 + IMU",
+      "row": 0,
+      "col": 0,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 1, "end_line": 10, "label": "驱动参数" },
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/launch/rm_navigation_reality_launch.py", "line": 137, "label": "驱动节点启动" }
+      ]
+    },
+    {
+      "id": "point_lio",
+      "type": "backend",
+      "label": "Point-LIO 里程计",
+      "sublabel": "point_lio / pointlio_mapping",
+      "tag": "LiDAR-IMU 状态估计",
+      "row": 0,
+      "col": 1,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/point_lio/src/laserMapping.cpp", "line": 369, "end_line": 391, "label": "话题端点" },
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 13, "end_line": 81, "label": "实车估计参数" }
+      ]
+    },
+    {
+      "id": "frame_adapter",
+      "type": "backend",
+      "label": "点云与坐标系适配",
+      "sublabel": "loam_interface + sensor_scan_generation",
+      "tag": "lidar_odom → odom → 车体 TF",
+      "row": 0,
+      "col": 2,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/loam_interface/src/loam_interface.cpp", "line": 43, "end_line": 104, "label": "点云/里程计转换" },
+        { "path": "src/pb2025_sentry_nav/sensor_scan_generation/src/sensor_scan_generation.cpp", "line": 38, "end_line": 93, "label": "同步与 TF 发布" }
+      ]
+    },
+    {
+      "id": "global_localization",
+      "type": "backend",
+      "label": "全局地图与重定位",
+      "sublabel": "map_server + small_gicp",
+      "tag": "YAML/PGM + PCD → map→odom",
+      "row": 0,
+      "col": 4,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/launch/localization_launch.py", "line": 86, "end_line": 142, "label": "导航模式节点" },
+        { "path": "src/pb2025_sentry_nav/small_gicp_relocalization/src/small_gicp_relocalization.cpp", "line": 92, "end_line": 96, "label": "点云与初始位姿输入" },
+        { "path": "src/pb2025_sentry_nav/small_gicp_relocalization/src/small_gicp_relocalization.cpp", "line": 200, "end_line": 214, "label": "map→odom 发布" }
+      ]
+    },
+    {
+      "id": "terrain_pipeline",
+      "type": "backend",
+      "label": "近远场地形分析",
+      "sublabel": "terrain_analysis + terrain_analysis_ext",
+      "tag": "可通行性写入 intensity",
+      "row": 1,
+      "col": 2,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/terrain_analysis/src/terrainAnalysis.cpp", "line": 254, "end_line": 267, "label": "近场 terrain_map" },
+        { "path": "src/pb2025_sentry_nav/terrain_analysis_ext/src/terrainAnalysisExt.cpp", "line": 213, "end_line": 230, "label": "远场 terrain_map_ext" }
+      ]
+    },
+    {
+      "id": "costmaps",
+      "type": "database",
+      "label": "Nav2 双代价地图",
+      "sublabel": "local_costmap + global_costmap",
+      "tag": "静态层 + IntensityVoxel + 膨胀层",
+      "row": 1,
+      "col": 4,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 385, "end_line": 433, "label": "局部代价地图" },
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 435, "end_line": 481, "label": "全局代价地图" }
+      ]
+    },
+    {
+      "id": "nav_bt",
+      "type": "backend",
+      "label": "Nav2 行为树导航器",
+      "sublabel": "bt_navigator",
+      "tag": "重规划 + 清图 + BackUp",
+      "row": 2,
+      "col": 2,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 272, "end_line": 330, "label": "导航器配置" },
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml", "line": 5, "end_line": 38, "label": "恢复与重规划拓扑" }
+      ]
+    },
+    {
+      "id": "path_services",
+      "type": "backend",
+      "label": "全局规划与路径平滑",
+      "sublabel": "planner_server + smoother_server",
+      "tag": "ThetaStarPlanner + SimpleSmoother",
+      "row": 2,
+      "col": 4,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 498, "end_line": 518, "label": "规划/平滑插件" }
+      ]
+    },
+    {
+      "id": "motion_control",
+      "type": "backend",
+      "label": "全向跟踪与速度平滑",
+      "sublabel": "controller_server + velocity_smoother",
+      "tag": "OmniPidPursuit · 20 Hz",
+      "row": 2,
+      "col": 5,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/config/reality/nav2_params.yaml", "line": 332, "end_line": 383, "label": "全向控制器" },
+        { "path": "src/pb2025_sentry_nav/pb2025_nav_bringup/launch/navigation_launch.py", "line": 236, "end_line": 248, "label": "速度话题重映射" }
+      ]
+    },
+    {
+      "id": "velocity_frame",
+      "type": "backend",
+      "label": "云台自旋速度变换",
+      "sublabel": "fake_vel_transform",
+      "tag": "gimbal_yaw_fake → chassis",
+      "row": 2,
+      "col": 6,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/pb2025_sentry_nav/fake_vel_transform/src/fake_vel_transform.cpp", "line": 51, "end_line": 69, "label": "速度/里程计输入输出" },
+        { "path": "src/pb2025_sentry_nav/fake_vel_transform/src/fake_vel_transform.cpp", "line": 141, "end_line": 154, "label": "参考系旋转" }
+      ]
+    },
+    {
+      "id": "chassis_bridge",
+      "type": "external",
+      "label": "串口桥接与全向底盘",
+      "sublabel": "standard_robot_pp_ros2 + MCU",
+      "tag": "vx / vy / wz · 5 ms 发送周期",
+      "row": 2,
+      "col": 7,
+      "size": [160, 72],
+      "sources": [
+        { "path": "src/standard_robot_pp_ros2/src/standard_robot_pp_ros2.cpp", "line": 113, "end_line": 117, "label": "cmd_vel 订阅" },
+        { "path": "src/standard_robot_pp_ros2/src/standard_robot_pp_ros2.cpp", "line": 760, "end_line": 785, "label": "串口发送与速度封包" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "pb2025_nav_bringup 导航运行时",
+      "wraps": ["livox_ingress", "point_lio", "frame_adapter", "global_localization", "terrain_pipeline", "costmaps", "nav_bt", "path_services", "motion_control", "velocity_frame"],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "nav2_container（use_composition=True）",
+      "wraps": ["frame_adapter", "global_localization", "costmaps", "nav_bt", "path_services", "motion_control", "velocity_frame"],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    { "id": "sensor-stream", "from": "livox_ingress", "to": "point_lio", "label": "livox/lidar + livox/imu", "variant": "emphasis", "labelDy": 54 },
+    { "id": "lio-products", "from": "point_lio", "to": "frame_adapter", "label": "cloud_registered + aft_mapped_to_init", "variant": "emphasis", "labelDy": 54 },
+    { "id": "registration-input", "from": "frame_adapter", "to": "global_localization", "label": "registered_scan" },
+    { "id": "terrain-input", "from": "frame_adapter", "to": "terrain_pipeline", "label": "registered_scan + lidar_odometry", "labelAt": [616, 178] },
+    { "id": "terrain-cost", "from": "terrain_pipeline", "to": "costmaps", "label": "terrain_map / terrain_map_ext", "variant": "emphasis" },
+    { "id": "global-frame", "from": "global_localization", "to": "costmaps", "label": "静态 map + TF map→odom", "labelAt": [1104, 178] },
+    { "id": "mission-goal", "from": "mission_behavior", "to": "nav_bt", "label": "goal_pose / NavigateToPose", "variant": "emphasis" },
+    { "id": "plan-request", "from": "nav_bt", "to": "path_services", "label": "ComputePathToPose · 3 Hz", "variant": "emphasis" },
+    { "id": "global-cost", "from": "costmaps", "to": "path_services", "label": "global_costmap", "labelAt": [1104, 350] },
+    { "id": "follow-path", "from": "path_services", "to": "motion_control", "label": "FollowPath", "variant": "emphasis", "labelAt": [1226, 532] },
+    { "id": "local-cost", "from": "costmaps", "to": "motion_control", "label": "local_costmap" },
+    { "id": "smoothed-velocity", "from": "motion_control", "to": "velocity_frame", "label": "cmd_vel_nav2_result", "variant": "emphasis", "labelAt": [1470, 420] },
+    { "id": "spin-overlay", "from": "mission_behavior", "to": "velocity_frame", "label": "cmd_spin 叠加", "variant": "dashed" },
+    { "id": "chassis-command", "from": "velocity_frame", "to": "chassis_bridge", "label": "cmd_vel → 串口速度向量", "variant": "emphasis", "labelDy": 54 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "运行时主闭环",
+      "items": [
+        "任务目标进入 bt_navigator，按行为树触发 Theta* 重规划和 FollowPath 跟踪",
+        "控制器输出经 velocity_smoother 与 fake_vel_transform 转成底盘参考系速度"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "定位与环境模型",
+      "items": [
+        "Point-LIO 提供实时点云/里程计；loam_interface 与 sensor_scan_generation 统一 odom 和车体 TF",
+        "small_gicp 以先验 PCD 发布 map→odom；近远场地形分别驱动局部和全局代价地图"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "启动模式与生命周期",
+      "items": [
+        "slam:=False 启动 map_server + small_gicp；slam:=True 改用 slam_toolbox 与静态 map→odom",
+        "autostart 驱动 localization/navigation lifecycle_manager；use_composition=True 将可组合节点装入 nav2_container"
+      ]
+    }
+  ]
+}

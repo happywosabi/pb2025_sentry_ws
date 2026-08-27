@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "Nav2 双代价地图运行原理", "output": "costmaps.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "代价地图更新主链 · 奇数步骤" }, { "id": "lower", "label": "代价地图更新主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "地图输入", "fromCol": 0, "toCol": 1 },
+    { "id": "layers", "label": "图层更新", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "规划状态", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["sources", "window", "filter", "voxel", "merge", "costmaps_out"],
+  "nodes": [
+    { "id": "sources", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "地图输入", "sublabel": "map+terrain" },
+    { "id": "window", "lane": "lower", "col": 1, "width": 52, "type": "database", "label": "窗口更新", "sublabel": "局部/全局" },
+    { "id": "filter", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "障碍筛选", "sublabel": "高·强·距" },
+    { "id": "voxel", "lane": "lower", "col": 3, "width": 52, "type": "database", "label": "体素标记", "sublabel": "VoxelLayer" },
+    { "id": "merge", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "图层合并", "sublabel": "静态+膨胀" },
+    { "id": "costmaps_out", "lane": "lower", "col": 5, "width": 52, "type": "database", "label": "双图输出", "sublabel": "10/5 Hz" }
+  ],
+  "edges": [
+    { "from": "sources", "to": "window" }, { "from": "window", "to": "filter" }, { "from": "filter", "to": "voxel" },
+    { "from": "voxel", "to": "merge", "variant": "emphasis" }, { "from": "merge", "to": "costmaps_out" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["IntensityVoxelLayer 每轮清空自身状态，读取 terrain PointCloud2，只保留满足高度、intensity 与量程阈值的点。", "合格点被投影进三维体素并标记二维 LETHAL_OBSTACLE，再与静态层和 InflationLayer 合成；局部图使用 odom 滚动窗口，全局图使用 map。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["intensity=0.25 的石块点位于 2 m 处，落入允许区间后对应栅格被标成致命障碍，周围 0.7 m 再产生渐变膨胀代价。", "远处障碍进入 terrain_map_ext 后影响 global_costmap 的绕行；靠近机器人时 terrain_map 以更高频率更新 local_costmap。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["体素筛选与标记：src/pb2025_sentry_nav/pb_nav2_plugins/src/layers/intensity_voxel_layer.cpp:99", "双地图配置：pb2025_nav_bringup/config/reality/nav2_params.yaml:385、435"] }
+  ]
+}

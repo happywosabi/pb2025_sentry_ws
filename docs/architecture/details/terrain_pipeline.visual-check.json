@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "visual-check",
+  "status": "skipped",
+  "visualReview": "pending",
+  "artifact": {
+    "path": "/home/happywosabi/pb2025_sentry_ws/docs/architecture/details/terrain_pipeline.html",
+    "sha256": "e599f3ebb9ed071bbdd4d3cd0ca2a86f942495c7df4413e8022f71e878e0e044",
+    "bytes": 630560
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "unavailable",
+    "executable": null
+  },
+  "containment": {
+    "status": "skipped",
+    "viewports": []
+  },
+  "captures": {
+    "status": "skipped",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "terrain_pipeline.visual-check.json",
+    "contactSheet": "terrain_pipeline.visual-check.html"
+  },
+  "error": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path."
+}

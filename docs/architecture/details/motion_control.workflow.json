@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "全向跟踪与速度平滑运行原理", "output": "motion_control.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "20 Hz 控制主链 · 奇数步骤" }, { "id": "lower", "label": "20 Hz 控制主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "路径与状态", "fromCol": 0, "toCol": 1 },
+    { "id": "control", "label": "跟踪计算", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "速度输出", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["inputs", "local_plan", "carrot", "pid", "safety", "velocity"],
+  "nodes": [
+    { "id": "inputs", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "路径状态", "sublabel": "Path+TF" },
+    { "id": "local_plan", "lane": "lower", "col": 1, "width": 52, "type": "backend", "label": "局部裁剪", "sublabel": "base" },
+    { "id": "carrot", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "前视点", "sublabel": "lookahead" },
+    { "id": "pid", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "全向PID", "sublabel": "vx/vy/wz" },
+    { "id": "safety", "lane": "upper", "col": 4, "width": 52, "type": "security", "label": "安全限制", "sublabel": "曲率·碰撞" },
+    { "id": "velocity", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "平滑输出", "sublabel": "20 Hz" }
+  ],
+  "edges": [
+    { "from": "inputs", "to": "local_plan" }, { "from": "local_plan", "to": "carrot" }, { "from": "carrot", "to": "pid", "variant": "emphasis" },
+    { "from": "pid", "to": "safety" }, { "from": "safety", "to": "velocity" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["控制器把全局路径变换并裁剪到局部代价图范围，按当前速度选择前视距离，从路径上取得 carrot 点。", "移动 PID 根据 carrot 的距离生成线速度并分解为 x/y；随后应用曲率、接近目标和激光障碍缩放，抽样检查局部轨迹碰撞，最后由 velocity_smoother 限制加速度。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["carrot 位于机器人左前方，lin_vel=1 m/s、方位角 30° 时，基础输出约 vx=0.866、vy=0.5 m/s。", "若抽样路径落入膨胀障碍栅格，控制器抛出 PlannerException；Nav2 行为树随后进入清图/恢复，而不是继续发送危险速度。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["控制计算：src/pb2025_sentry_nav/pb_omni_pid_pursuit_controller/src/omni_pid_pursuit_controller.cpp:554", "参数与平滑：pb2025_nav_bringup/config/reality/nav2_params.yaml:332、563"] }
+  ]
+}

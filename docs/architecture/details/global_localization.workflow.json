@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "全局地图与 GICP 重定位运行原理", "output": "global_localization.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "全局重定位主链 · 奇数步骤" }, { "id": "lower", "label": "全局重定位主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "prepare", "label": "地图准备", "fromCol": 0, "toCol": 1 },
+    { "id": "register", "label": "点云配准", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "publish", "label": "全局定位", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["map", "target", "scans", "source", "gicp", "tf"],
+  "nodes": [
+    { "id": "map", "lane": "upper", "col": 0, "width": 52, "type": "database", "label": "地图加载", "sublabel": "PGM+PCD" },
+    { "id": "target", "lane": "lower", "col": 1, "width": 52, "type": "backend", "label": "目标索引", "sublabel": "KDTree" },
+    { "id": "scans", "lane": "upper", "col": 2, "width": 52, "type": "messagebus", "label": "点云累积", "sublabel": "scan" },
+    { "id": "source", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "源云构建", "sublabel": "2 Hz" },
+    { "id": "gicp", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "GICP对齐", "sublabel": "上次初值" },
+    { "id": "tf", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "TF广播", "sublabel": "map→odom" }
+  ],
+  "edges": [
+    { "from": "map", "to": "target" }, { "from": "target", "to": "scans" }, { "from": "scans", "to": "source" },
+    { "from": "source", "to": "gicp", "variant": "emphasis" }, { "from": "gicp", "to": "tf" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["启动时把先验 PCD 转到 odom 基准，体素下采样后估计邻域协方差并建立 KDTree，形成固定目标点云。", "运行时累积 registered_scan，每 500 ms 构建源点云并以先前 map→odom 为初值执行 GICP；收敛结果由独立 20 Hz 定时器持续广播。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["机器人在地图东侧 2 m 处启动：实时墙角点与先验墙角对齐后，GICP 得到约 x=2 m 的 map→odom 平移。", "RViz 发布 initialpose 后，该位姿先换算成 map→odom，作为下一次 GICP 的近似初值，减少落入错误局部最优的概率。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["地图预处理与定时器：src/pb2025_sentry_nav/small_gicp_relocalization/src/small_gicp_relocalization.cpp:70", "配准与 TF：small_gicp_relocalization.cpp:148、191"] }
+  ]
+}

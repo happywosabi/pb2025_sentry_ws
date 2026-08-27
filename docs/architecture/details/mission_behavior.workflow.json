@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "任务决策行为树运行原理", "output": "mission_behavior.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "行为树主循环 · 奇数步骤" }, { "id": "lower", "label": "行为树主循环 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "输入", "fromCol": 0, "toCol": 1 },
+    { "id": "decision", "label": "决策", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "输出", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["events", "blackboard", "tick", "guards", "goal", "publish"],
+  "nodes": [
+    { "id": "events", "lane": "upper", "col": 0, "width": 52, "type": "external", "label": "事件输入", "sublabel": "HP·阶段·RFID" },
+    { "id": "blackboard", "lane": "lower", "col": 1, "width": 52, "type": "database", "label": "更新黑板", "sublabel": "ROS回调" },
+    { "id": "tick", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "周期Tick", "sublabel": "5 Hz" },
+    { "id": "guards", "lane": "lower", "col": 3, "width": 52, "type": "security", "label": "条件守卫", "sublabel": "开赛·状态" },
+    { "id": "goal", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "选择目标", "sublabel": "Pose·map" },
+    { "id": "publish", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "发布命令", "sublabel": "goal+spin" }
+  ],
+  "edges": [
+    { "from": "events", "to": "blackboard" }, { "from": "blackboard", "to": "tick" },
+    { "from": "tick", "to": "guards" }, { "from": "guards", "to": "goal" }, { "from": "goal", "to": "publish", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["SentryBehaviorServer 将裁判、目标检测和全局代价地图消息写入 BehaviorTree.CPP 全局黑板。", "客户端启动 rmul_2025 树后，服务器按 5 Hz 重复 Tick；ReactiveSequence 每轮重新检查比赛与机器人状态，再决定是否发布目标和自旋速度。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["比赛阶段为 4 且机器人 HP 正常时，树发布 goal_pose=(4.65,-3.5,0) 与 cmd_spin=7.0。", "比赛尚未开始时，check_game_start 分支发布零速度，后续导航目标不会生效。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["行为拓扑：src/pb2025_sentry_behavior/behavior_trees/rmul_2025.xml:3", "订阅与黑板：src/pb2025_sentry_behavior/src/pb2025_sentry_behavior_server.cpp:34；参数：node_params.yaml:682"] }
+  ]
+}

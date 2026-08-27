@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "点云与坐标系适配运行原理", "output": "frame_adapter.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "坐标变换与同步主链 · 奇数步骤" }, { "id": "lower", "label": "坐标变换与同步主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "Point-LIO 输入", "fromCol": 0, "toCol": 1 },
+    { "id": "transform", "label": "坐标变换", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "导航输入", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["lio", "mount_tf", "odom_cloud", "sync", "chassis_tf", "publish"],
+  "nodes": [
+    { "id": "lio", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "LIO结果", "sublabel": "cloud+odom" },
+    { "id": "mount_tf", "lane": "lower", "col": 1, "width": 52, "type": "database", "label": "安装外参", "sublabel": "TF" },
+    { "id": "odom_cloud", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "统一odom", "sublabel": "loam" },
+    { "id": "sync", "lane": "lower", "col": 3, "width": 52, "type": "messagebus", "label": "消息同步", "sublabel": "近似同步" },
+    { "id": "chassis_tf", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "车体位姿", "sublabel": "odom→base" },
+    { "id": "publish", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "坐标发布", "sublabel": "scan+odom" }
+  ],
+  "edges": [
+    { "from": "lio", "to": "mount_tf" }, { "from": "mount_tf", "to": "odom_cloud" }, { "from": "odom_cloud", "to": "sync" },
+    { "from": "sync", "to": "chassis_tf", "variant": "emphasis" }, { "from": "chassis_tf", "to": "publish" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["loam_interface 用雷达与车体的安装外参，把 Point-LIO 的 lidar_odom 结果改写到系统 odom 原点。", "sensor_scan_generation 近似同步 registered_scan 与 lidar_odometry，计算 odom→base_footprint 和 odom→gimbal_yaw，同时生成车体里程计。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["雷达安装点比底盘中心向前 0.2 m；雷达报告前进 1.0 m 时，转换后底盘中心位置会扣除这段安装偏移。", "点云时间戳与里程计相差几毫秒时，ApproximateTime 仍能把二者配对，避免用旧位姿转换新点云。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["loam_interface：src/pb2025_sentry_nav/loam_interface/src/loam_interface.cpp:43", "同步与 TF：src/pb2025_sentry_nav/sensor_scan_generation/src/sensor_scan_generation.cpp:38"] }
+  ]
+}

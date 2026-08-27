@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "Livox Mid-360 与驱动运行原理", "output": "livox_ingress.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "驱动数据通道 · 奇数步骤" }, { "id": "lower", "label": "驱动数据通道 · 偶数步骤" }],
+  "phases": [
+    { "id": "capture", "label": "采集", "fromCol": 0, "toCol": 1 },
+    { "id": "convert", "label": "排队与转换", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "publish", "label": "发布", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["sensor", "sdk", "queue", "poll", "convert_msg", "topics"],
+  "nodes": [
+    { "id": "sensor", "lane": "upper", "col": 0, "width": 52, "type": "external", "label": "雷达采样", "sublabel": "点云+IMU" },
+    { "id": "sdk", "lane": "lower", "col": 1, "width": 52, "type": "backend", "label": "SDK回调", "sublabel": "原始包" },
+    { "id": "queue", "lane": "upper", "col": 2, "width": 52, "type": "messagebus", "label": "数据队列", "sublabel": "信号量" },
+    { "id": "poll", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "设备轮询", "sublabel": "Sampling" },
+    { "id": "convert_msg", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "消息转换", "sublabel": "format=4" },
+    { "id": "topics", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "话题发布", "sublabel": "lidar+imu" }
+  ],
+  "edges": [
+    { "from": "sensor", "to": "sdk" }, { "from": "sdk", "to": "queue" }, { "from": "queue", "to": "poll" },
+    { "from": "poll", "to": "convert_msg" }, { "from": "convert_msg", "to": "topics", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["SDK 回调把设备数据放入点云和 IMU 队列，并通过信号量唤醒分发线程。", "Lddc 检查设备处于 Sampling 状态后逐包取出数据；xfer_format=4 同时生成 PointCloud2/LivoxCustomMsg，并独立发布 IMU。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["20 Hz 配置下，每约 50 ms 形成一次点云发布；同一时段的 IMU 包走独立队列，不会等待点云转换结束。", "若设备断开或队列为空，本轮轮询直接跳过，不会发布伪造数据。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["队列分发：src/pb2025_sentry_nav/livox_ros_driver2/src/lddc.cpp:72", "实车参数：pb2025_nav_bringup/config/reality/nav2_params.yaml:1"] }
+  ]
+}

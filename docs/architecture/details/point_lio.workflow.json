@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "Point-LIO 里程计运行原理", "output": "point_lio.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "LiDAR-IMU 状态估计主链 · 奇数步骤" }, { "id": "lower", "label": "LiDAR-IMU 状态估计主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "同步输入", "fromCol": 0, "toCol": 1 },
+    { "id": "estimate", "label": "估计与建图", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "输出", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["sensor", "sync", "preprocess", "eskf", "map_update", "publish"],
+  "nodes": [
+    { "id": "sensor", "lane": "upper", "col": 0, "width": 52, "type": "external", "label": "传感输入", "sublabel": "LiDAR+IMU" },
+    { "id": "sync", "lane": "lower", "col": 1, "width": 52, "type": "messagebus", "label": "时间同步", "sublabel": "packages" },
+    { "id": "preprocess", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "预处理", "sublabel": "滤波·去畸" },
+    { "id": "eskf", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "ESKF更新", "sublabel": "传播+修正" },
+    { "id": "map_update", "lane": "upper", "col": 4, "width": 52, "type": "database", "label": "增量地图", "sublabel": "Voxel" },
+    { "id": "publish", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "结果发布", "sublabel": "cloud+odom" }
+  ],
+  "edges": [
+    { "from": "sensor", "to": "sync" }, { "from": "sync", "to": "preprocess" }, { "from": "preprocess", "to": "eskf" },
+    { "from": "eskf", "to": "map_update", "variant": "emphasis" }, { "from": "map_update", "to": "publish" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["Point-LIO 先把一帧 LiDAR 数据与覆盖其时间段的 IMU 样本组合，再用 IMU 对状态和协方差进行高频传播。", "去畸变点云与局部体素地图建立平面约束，ESKF 迭代修正位姿；修正后的点加入增量地图并发布配准点云和 aft_mapped_to_init。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["机器人前进 0.1 m 时，IMU 先预测运动；墙面点与地图平面的残差会把漂移的预测位姿拉回。", "若新帧点落入已有体素且不能提高地图分辨率，MapIncremental 可跳过冗余点，降低计算量。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["主循环与 ESKF：src/pb2025_sentry_nav/point_lio/src/laserMapping.cpp:400、537", "发布端点：laserMapping.cpp:383；参数：nav2_params.yaml:13"] }
+  ]
+}

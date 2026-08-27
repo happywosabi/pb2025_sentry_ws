@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "全局规划与路径平滑运行原理", "output": "path_services.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "路径服务主链 · 奇数步骤" }, { "id": "lower", "label": "路径服务主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "request", "label": "请求", "fromCol": 0, "toCol": 1 },
+    { "id": "plan", "label": "搜索与平滑", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "路径输出", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["request", "snapshot", "theta", "reconstruct", "smooth", "path"],
+  "nodes": [
+    { "id": "request", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "规划请求", "sublabel": "起点+目标" },
+    { "id": "snapshot", "lane": "lower", "col": 1, "width": 52, "type": "database", "label": "读取代价", "sublabel": "global" },
+    { "id": "theta", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "Theta*", "sublabel": "8邻域" },
+    { "id": "reconstruct", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "路径回溯", "sublabel": "父节点链" },
+    { "id": "smooth", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "路径平滑", "sublabel": "Simple" },
+    { "id": "path", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "提交路径", "sublabel": "Path" }
+  ],
+  "edges": [
+    { "from": "request", "to": "snapshot" }, { "from": "snapshot", "to": "theta" }, { "from": "theta", "to": "reconstruct", "variant": "emphasis" },
+    { "from": "reconstruct", "to": "smooth" }, { "from": "smooth", "to": "path" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["planner_server 使用配置的 ThetaStarPlanner 在 global_costmap 上搜索；与普通 A* 不同，Theta* 会检查父节点到候选点的直线可见性，从而生成非严格栅格折线路径。", "路径回溯后交给 SimpleSmoother 迭代调整折点，最终作为 nav_msgs/Path 传给 FollowPath。仓库只配置插件，算法实现来自 Nav2 依赖。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["在空旷矩形区域中，A* 可能沿多个栅格角移动；Theta* 检查视线无遮挡后可直接连接起点和目标附近节点。", "若路径紧贴膨胀层，w_traversal_cost=10 会让搜索更偏好代价较低、离障碍更远的走廊。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["插件选择与权重：pb2025_nav_bringup/config/reality/nav2_params.yaml:498", "调用位置：navigate_to_pose_w_replanning_and_recovery.xml:8；Theta* 源码属于外部 Nav2 包"] }
+  ]
+}

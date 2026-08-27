@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "云台自旋速度变换运行原理", "output": "velocity_frame.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "速度参考系变换主链 · 奇数步骤" }, { "id": "lower", "label": "速度参考系变换主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "同步输入", "fromCol": 0, "toCol": 1 },
+    { "id": "transform", "label": "旋转与叠加", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "底盘速度", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["commands", "sync", "yaw", "rotate", "spin", "publish"],
+  "nodes": [
+    { "id": "commands", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "速度自旋", "sublabel": "vel+spin" },
+    { "id": "sync", "lane": "lower", "col": 1, "width": 52, "type": "messagebus", "label": "消息同步", "sublabel": "odom+plan" },
+    { "id": "yaw", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "偏航计算", "sublabel": "yaw_diff" },
+    { "id": "rotate", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "向量旋转", "sublabel": "2D矩阵" },
+    { "id": "spin", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "自旋叠加", "sublabel": "wz+spin" },
+    { "id": "publish", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "底盘发布", "sublabel": "cmd_vel" }
+  ],
+  "edges": [
+    { "from": "commands", "to": "sync" }, { "from": "sync", "to": "yaw" }, { "from": "yaw", "to": "rotate" },
+    { "from": "rotate", "to": "spin", "variant": "emphasis" }, { "from": "spin", "to": "publish" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["Nav2 在虚拟 gimbal_yaw_fake 参考系规划平移，节点根据真实云台/车体偏航差把二维线速度旋转到底盘坐标系。", "旋转后把任务层 cmd_spin 加到 angular.z，并发布 cmd_vel；同时广播虚拟参考系 TF，使持续自旋不会改变 Nav2 看到的前进方向。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["导航要求虚拟坐标系向前 1 m/s，而云台相对底盘转过 90°，转换后底盘获得约 vy=-1 m/s，以保持世界方向上的前进。", "导航 angular.z=0.2、任务 cmd_spin=3.0 时，最终底盘角速度为 3.2 rad/s。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["输入与同步：src/pb2025_sentry_nav/fake_vel_transform/src/fake_vel_transform.cpp:51", "旋转公式与自旋叠加：fake_vel_transform.cpp:141；参数：nav2_params.yaml:153"] }
+  ]
+}

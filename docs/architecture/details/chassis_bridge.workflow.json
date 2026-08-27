@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "串口桥接与全向底盘运行原理", "output": "chassis_bridge.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "速度命令下发主链 · 奇数步骤" }, { "id": "lower", "label": "速度命令下发主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "ROS 2 输入", "fromCol": 0, "toCol": 1 },
+    { "id": "packet", "label": "协议封包", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "hardware", "label": "硬件执行", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["cmd", "copy", "header", "crc", "serial", "mcu"],
+  "nodes": [
+    { "id": "cmd", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "速度订阅", "sublabel": "Twist" },
+    { "id": "copy", "lane": "lower", "col": 1, "width": 52, "type": "backend", "label": "命令更新", "sublabel": "vx/vy/wz" },
+    { "id": "header", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "协议帧头", "sublabel": "SOF·ID·len" },
+    { "id": "crc", "lane": "lower", "col": 3, "width": 52, "type": "security", "label": "CRC校验", "sublabel": "CRC8+16" },
+    { "id": "serial", "lane": "upper", "col": 4, "width": 52, "type": "messagebus", "label": "串口发送", "sublabel": "每5 ms" },
+    { "id": "mcu", "lane": "lower", "col": 5, "width": 52, "type": "external", "label": "底盘执行", "sublabel": "MCU" }
+  ],
+  "edges": [
+    { "from": "cmd", "to": "copy" }, { "from": "copy", "to": "header" }, { "from": "header", "to": "crc" },
+    { "from": "crc", "to": "serial", "variant": "emphasis" }, { "from": "serial", "to": "mcu" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["cmd_vel 回调只更新共享 SendRobotCmdData 中的 vx、vy、wz；独立发送线程以约 5 ms 周期封装整包。", "帧头写入 SOF、命令 ID 和长度，先计算 CRC8，再对整包附加 CRC16；序列化字节通过串口发给 MCU，USB 异常由保护线程重连。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["收到 vx=1.0、vy=-0.5、wz=2.0 后，下一次发送周期把三个浮点速度写进速度向量并附加校验码。", "若某一帧传输中发生位翻转，MCU 的 CRC16 检查应拒绝该帧，后续 5 ms 周期的新帧会继续到达。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["cmd_vel 订阅与字段更新：src/standard_robot_pp_ros2/src/standard_robot_pp_ros2.cpp:113、781", "协议发送线程：standard_robot_pp_ros2.cpp:741"] }
+  ]
+}

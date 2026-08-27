@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "近远场地形分析运行原理", "output": "terrain_pipeline.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [{ "id": "upper", "label": "可通行性点云处理主链 · 奇数步骤" }, { "id": "lower", "label": "可通行性点云处理主链 · 偶数步骤" }],
+  "phases": [
+    { "id": "input", "label": "输入", "fromCol": 0, "toCol": 1 },
+    { "id": "analyze", "label": "地形分析", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "output", "label": "输出", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["cloud", "window", "filter", "ground", "encode", "maps"],
+  "nodes": [
+    { "id": "cloud", "lane": "upper", "col": 0, "width": 52, "type": "messagebus", "label": "点云里程", "sublabel": "scan+odom" },
+    { "id": "window", "lane": "lower", "col": 1, "width": 52, "type": "database", "label": "滚动体素", "sublabel": "随车移动" },
+    { "id": "filter", "lane": "upper", "col": 2, "width": 52, "type": "backend", "label": "时空过滤", "sublabel": "采样·衰减" },
+    { "id": "ground", "lane": "lower", "col": 3, "width": 52, "type": "backend", "label": "地面估计", "sublabel": "分位/最低" },
+    { "id": "encode", "lane": "upper", "col": 4, "width": 52, "type": "backend", "label": "代价编码", "sublabel": "高度→强度" },
+    { "id": "maps", "lane": "lower", "col": 5, "width": 52, "type": "messagebus", "label": "地图发布", "sublabel": "near/far" }
+  ],
+  "edges": [
+    { "from": "cloud", "to": "window" }, { "from": "window", "to": "filter" }, { "from": "filter", "to": "ground" },
+    { "from": "ground", "to": "encode", "variant": "emphasis" }, { "from": "encode", "to": "maps" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["节点以机器人位置为中心滚动维护体素窗口，过滤过旧、过高、过低或超出有效距离的点。", "每个平面单元估计地面高度，再把点相对地面的高度写进 intensity；近场结果覆盖约 4 m，远场节点合并近场后输出更大范围地图。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["平地高度为 0 m、石块顶面为 0.25 m 时，石块点得到约 0.25 的 intensity，随后可被代价地图当作障碍。", "在斜坡上启用 useSorting 后，地面采用邻域分位高度，不会把整段坡面误判成连续障碍。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["近场输入输出：src/pb2025_sentry_nav/terrain_analysis/src/terrainAnalysis.cpp:254", "远场合并：src/pb2025_sentry_nav/terrain_analysis_ext/src/terrainAnalysisExt.cpp:213；参数：nav2_params.yaml:104"] }
+  ]
+}

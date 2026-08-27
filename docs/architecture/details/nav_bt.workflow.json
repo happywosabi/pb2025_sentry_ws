@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": { "title": "Nav2 行为树导航器运行原理", "output": "nav_bt.html", "quality_profile": "showcase", "legend": { "mode": "hidden" } },
+  "lanes": [
+    { "id": "runtime_odd", "label": "导航主路径 · 奇数步骤" },
+    { "id": "runtime_even", "label": "导航主路径 · 偶数步骤" },
+    { "id": "recovery", "label": "失败恢复", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "goal", "label": "目标", "fromCol": 0, "toCol": 1 },
+    { "id": "navigate", "label": "规划与跟踪", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "result", "label": "结果", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["goal_pose", "recovery_root", "compute", "follow", "goal_check", "success"],
+  "nodes": [
+    { "id": "goal_pose", "lane": "runtime_odd", "col": 0, "width": 52, "type": "external", "label": "接收目标", "sublabel": "goal_pose" },
+    { "id": "recovery_root", "lane": "runtime_even", "col": 1, "width": 52, "type": "backend", "label": "恢复根", "sublabel": "10次" },
+    { "id": "compute", "lane": "runtime_odd", "col": 2, "width": 52, "type": "backend", "label": "路径计算", "sublabel": "3 Hz" },
+    { "id": "follow", "lane": "runtime_even", "col": 3, "width": 52, "type": "backend", "label": "路径跟踪", "sublabel": "FollowPath" },
+    { "id": "goal_check", "lane": "runtime_odd", "col": 4, "width": 52, "type": "security", "label": "目标检查", "sublabel": "GoalCheck" },
+    { "id": "success", "lane": "runtime_even", "col": 5, "width": 52, "type": "messagebus", "label": "返回结果", "sublabel": "成/取/败" },
+    { "id": "clear", "lane": "recovery", "col": 3, "width": 52, "type": "security", "label": "清空地图", "sublabel": "双图" },
+    { "id": "backup", "lane": "recovery", "col": 5, "width": 52, "type": "backend", "label": "后退脱困", "sublabel": "1 m" }
+  ],
+  "edges": [
+    { "from": "goal_pose", "to": "recovery_root" }, { "from": "recovery_root", "to": "compute" },
+    { "from": "compute", "to": "follow", "variant": "emphasis" }, { "from": "follow", "to": "goal_check" }, { "from": "goal_check", "to": "success" },
+    { "from": "follow", "to": "clear", "label": "跟踪失败", "variant": "security", "role": "error" },
+    { "from": "clear", "to": "backup" }, { "from": "backup", "to": "compute", "label": "重试", "variant": "dashed", "role": "return", "route": "bottom-channel", "fromSide": "bottom", "toSide": "bottom", "channelY": 430 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "原理说明", "items": ["bt_navigator 将目标交给 PipelineSequence：RateController 以 3 Hz 重新规划，同时 FollowPath 消费最新路径。", "规划或跟踪失败时先清相应代价地图；总恢复轮次还会执行 BackUp，再回到 ComputePathToPose，直到成功、目标更新或重试耗尽。"] },
+    { "dot": "emerald", "title": "简单例子", "items": ["通道突然被箱子阻挡时，FollowPath 失败触发 local_costmap 清理；若仍失败，机器人后退 1 m 后重新规划。", "任务行为树更新 goal_pose 时，GoalUpdated 会结束旧恢复分支，导航器直接处理新目标。"] },
+    { "dot": "slate", "title": "代码依据", "items": ["运行树：pb2025_nav_bringup/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml:5", "导航器配置：pb2025_nav_bringup/config/reality/nav2_params.yaml:272"] }
+  ]
+}
